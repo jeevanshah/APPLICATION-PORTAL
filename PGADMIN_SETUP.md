@@ -5,7 +5,7 @@
 **URL**: http://localhost:5050
 
 **Default Credentials**:
-- Email: `admin@churchill.local`
+- Email: `admin@admin.com`
 - Password: `admin123`
 
 ## First Time Setup - Connect to Database
