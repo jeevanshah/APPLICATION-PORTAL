@@ -1,0 +1,417 @@
+{
+  "info": {
+    "name": "Application Portal API",
+    "description": "Complete API collection for Churchill Institute Application Portal - 12-step application form",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "churchill-app-portal-v1"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "application_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login (Agent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "    pm.environment.set('access_token', jsonData.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"test.agent@agency.com\",\n  \"password\": \"AgentPass123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as an agent user and get access token"
+          }
+        },
+        {
+          "name": "Login (Student)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"john.doe@example.com\",\n  \"password\": \"StudentPass123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as a student user (note: students cannot edit applications)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Applications",
+      "item": [
+        {
+          "name": "Create Application",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('application_id', jsonData.application.id);",
+                  "    pm.environment.set('application_id', jsonData.application.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"student_profile_id\": \"{{student_profile_id}}\",\n  \"course_offering_id\": \"{{course_offering_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/applications",
+              "host": ["{{base_url}}"],
+              "path": ["applications"]
+            },
+            "description": "Create a new application draft. Agent profile is auto-assigned."
+          }
+        },
+        {
+          "name": "Get Application",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["applications", "{{application_id}}"]
+            },
+            "description": "Get full application details including progress"
+          }
+        },
+        {
+          "name": "List Applications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/applications",
+              "host": ["{{base_url}}"],
+              "path": ["applications"]
+            },
+            "description": "List all applications (filtered by user role)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Step 1: Personal Details",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"given_name\": \"John\",\n  \"middle_name\": \"Robert\",\n  \"family_name\": \"Smith\",\n  \"date_of_birth\": \"2000-01-15\",\n  \"gender\": \"Male\",\n  \"email\": \"john.smith@example.com\",\n  \"phone\": \"+61412345678\",\n  \"street_address\": \"123 Main St\",\n  \"suburb\": \"Sydney\",\n  \"state\": \"NSW\",\n  \"postcode\": \"2000\",\n  \"country\": \"Australia\",\n  \"passport_number\": \"N1234567\",\n  \"passport_expiry\": \"2030-12-31\",\n  \"nationality\": \"Australian\",\n  \"country_of_birth\": \"Australia\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/1/personal-details",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "1", "personal-details"]
+        }
+      }
+    },
+    {
+      "name": "Step 2: Emergency Contact",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contacts\": [\n    {\n      \"name\": \"Jane Smith\",\n      \"relationship\": \"Mother\",\n      \"phone\": \"+61412345679\",\n      \"email\": \"jane.smith@example.com\",\n      \"is_primary\": true\n    },\n    {\n      \"name\": \"Bob Smith\",\n      \"relationship\": \"Father\",\n      \"phone\": \"+61412345680\",\n      \"email\": \"bob.smith@example.com\",\n      \"is_primary\": false\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/2/emergency-contact",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "2", "emergency-contact"]
+        }
+      }
+    },
+    {
+      "name": "Step 3: Health Cover",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"provider\": \"Medibank\",\n  \"policy_number\": \"MB123456\",\n  \"start_date\": \"2025-01-01\",\n  \"end_date\": \"2026-01-01\",\n  \"coverage_type\": \"Comprehensive\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/3/health-cover",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "3", "health-cover"]
+        }
+      }
+    },
+    {
+      "name": "Step 4: Language & Cultural",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"first_language\": \"English\",\n  \"other_languages\": [\"Mandarin\", \"Spanish\"],\n  \"english_proficiency\": \"Native\",\n  \"requires_language_support\": false,\n  \"cultural_background\": \"Australian\",\n  \"indigenous_status\": \"Neither Aboriginal nor Torres Strait Islander\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/4/language-cultural",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "4", "language-cultural"]
+        }
+      }
+    },
+    {
+      "name": "Step 5: Disability Support",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"has_disability\": true,\n  \"disability_type\": \"Mobility\",\n  \"support_required\": \"Wheelchair access\",\n  \"previous_support\": \"Yes, at previous institution\",\n  \"consent_to_share\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/5/disability",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "5", "disability"]
+        }
+      }
+    },
+    {
+      "name": "Step 6: Schooling History",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"schools\": [\n    {\n      \"school_name\": \"Sydney High School\",\n      \"country\": \"Australia\",\n      \"years_attended\": \"2014-2019\",\n      \"qualification\": \"HSC\",\n      \"year_completed\": 2019\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/6/schooling",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "6", "schooling"]
+        }
+      }
+    },
+    {
+      "name": "Step 7: Previous Qualifications",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"qualifications\": [\n    {\n      \"institution\": \"University of Sydney\",\n      \"qualification_name\": \"Bachelor of Science\",\n      \"field_of_study\": \"Computer Science\",\n      \"country\": \"Australia\",\n      \"year_completed\": 2023,\n      \"grade_average\": \"Distinction\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/7/qualifications",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "7", "qualifications"]
+        }
+      }
+    },
+    {
+      "name": "Step 8: Employment History",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"employment_records\": [\n    {\n      \"employer\": \"Tech Corp\",\n      \"position\": \"Software Developer\",\n      \"start_date\": \"2023-01-01\",\n      \"end_date\": \"2024-12-31\",\n      \"is_current\": false,\n      \"responsibilities\": \"Full-stack development\"\n    },\n    {\n      \"employer\": \"StartupCo\",\n      \"position\": \"Senior Developer\",\n      \"start_date\": \"2025-01-01\",\n      \"end_date\": null,\n      \"is_current\": true,\n      \"responsibilities\": \"Team lead and architecture\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/8/employment",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "8", "employment"]
+        }
+      }
+    },
+    {
+      "name": "Step 9: USI",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"usi\": \"ABCD123456\",\n  \"consent_to_verify\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/9/usi",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "9", "usi"]
+        }
+      }
+    },
+    {
+      "name": "Step 10: Additional Services",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"services\": [\n    {\n      \"service_type\": \"Airport Pickup\",\n      \"is_required\": true,\n      \"notes\": \"Arriving on Jan 15, 2025 at 3PM\"\n    },\n    {\n      \"service_type\": \"Accommodation Assistance\",\n      \"is_required\": true,\n      \"notes\": \"Prefer on-campus housing\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/10/additional-services",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "10", "additional-services"]
+        }
+      }
+    },
+    {
+      "name": "Step 11: Survey",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"responses\": [\n    {\n      \"question\": \"How did you hear about Churchill Institute?\",\n      \"answer\": \"Google Search\"\n    },\n    {\n      \"question\": \"What are your career goals?\",\n      \"answer\": \"Become a software engineer\"\n    },\n    {\n      \"question\": \"Why choose Churchill Institute?\",\n      \"answer\": \"Excellent reputation and location\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/11/survey",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "11", "survey"]
+        }
+      }
+    },
+    {
+      "name": "Step 12: Document Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/applications/{{application_id}}/steps/12/documents",
+          "host": ["{{base_url}}"],
+          "path": ["applications", "{{application_id}}", "steps", "12", "documents"]
+        },
+        "description": "Get document upload status (read-only)"
+      }
+    }
+  ]
+}

@@ -128,42 +128,75 @@ def agent_token_session():
         return None
 
 
-@pytest.fixture
-def agent_token(client, db_session, churchill_rto_id):
-    """Create and authenticate an agent user."""
-    from app.models import UserAccount, UserRole, UserStatus, AgentProfile
+@pytest.fixture(scope="session")
+def setup_test_users():
+    """Create test users once for the entire session."""
+    from app.models import UserAccount, UserRole, UserStatus, AgentProfile, StudentProfile
     from app.core.security import get_password_hash
     from uuid import uuid4
+    from datetime import date
     
-    # Check if agent already exists
-    existing_agent = db_session.query(UserAccount).filter(
-        UserAccount.email == "test.agent@agency.com"
-    ).first()
+    db = TestingSessionLocal()
     
-    if not existing_agent:
-        # Create agent user
-        agent_user = UserAccount(
+    # Create agent if doesn't exist
+    agent = db.query(UserAccount).filter_by(email="test.agent@agency.com").first()
+    if not agent:
+        agent = UserAccount(
             id=uuid4(),
             email="test.agent@agency.com",
             password_hash=get_password_hash("AgentPass123!"),
             role=UserRole.AGENT,
-            rto_profile_id=UUID(churchill_rto_id),
+            rto_profile_id=UUID("00000000-0000-0000-0000-000000000001"),
             status=UserStatus.ACTIVE
         )
-        db_session.add(agent_user)
-        db_session.flush()
+        db.add(agent)
+        db.flush()
         
-        # Create agent profile
         agent_profile = AgentProfile(
             id=uuid4(),
-            user_account_id=agent_user.id,
+            user_account_id=agent.id,
             agency_name="Test Agency",
             phone="+61 400 000 001",
             commission_rate=15.00
         )
-        db_session.add(agent_profile)
-        db_session.commit()
+        db.add(agent_profile)
     
+    # Create student if doesn't exist
+    student = db.query(UserAccount).filter_by(email="john.doe@example.com").first()
+    if not student:
+        student = UserAccount(
+            id=uuid4(),
+            email="john.doe@example.com",
+            password_hash=get_password_hash("StudentPass123!"),
+            role=UserRole.STUDENT,
+            rto_profile_id=UUID("00000000-0000-0000-0000-000000000001"),
+            status=UserStatus.ACTIVE
+        )
+        db.add(student)
+        db.flush()
+        
+        student_profile = StudentProfile(
+            id=uuid4(),
+            user_account_id=student.id,
+            given_name="John",
+            family_name="Doe",
+            date_of_birth=date(1995, 3, 15),
+            passport_number="JD1234567",
+            nationality="Australian"
+        )
+        db.add(student_profile)
+    
+    db.commit()
+    db.close()
+    
+    yield
+    
+    # No cleanup - let session cleanup handle it
+
+
+@pytest.fixture
+def agent_token(client, setup_test_users):
+    """Get agent authentication token."""
     # Login and get token
     response = client.post(
         "/api/v1/auth/login",
@@ -174,44 +207,8 @@ def agent_token(client, db_session, churchill_rto_id):
 
 
 @pytest.fixture
-def student_token(client, db_session, churchill_rto_id):
-    """Create and authenticate a student user."""
-    from app.models import UserAccount, UserRole, UserStatus, StudentProfile
-    from app.core.security import get_password_hash
-    from uuid import uuid4
-    from datetime import date
-    
-    # Check if student already exists
-    existing_student = db_session.query(UserAccount).filter(
-        UserAccount.email == "john.doe@example.com"
-    ).first()
-    
-    if not existing_student:
-        # Create student user
-        student_user = UserAccount(
-            id=uuid4(),
-            email="john.doe@example.com",
-            password_hash=get_password_hash("StudentPass123!"),
-            role=UserRole.STUDENT,
-            rto_profile_id=UUID(churchill_rto_id),
-            status=UserStatus.ACTIVE
-        )
-        db_session.add(student_user)
-        db_session.flush()
-        
-        # Create student profile
-        student_profile = StudentProfile(
-            id=uuid4(),
-            user_account_id=student_user.id,
-            given_name="John",
-            family_name="Doe",
-            date_of_birth=date(1995, 3, 15),
-            passport_number="JD1234567",
-            nationality="Australian"
-        )
-        db_session.add(student_profile)
-        db_session.commit()
-    
+def student_token(client, setup_test_users):
+    """Get student authentication token."""
     # Login and get token
     response = client.post(
         "/api/v1/auth/login",
@@ -222,8 +219,8 @@ def student_token(client, db_session, churchill_rto_id):
 
 
 @pytest.fixture
-def student_id(db_session):
-    """Get student profile ID for the test student."""
+def student_id(db_session, student_token):
+    """Get student profile ID for the test student (depends on student_token to ensure student exists)."""
     from app.models import UserAccount, StudentProfile
     
     user = db_session.query(UserAccount).filter(
@@ -236,30 +233,52 @@ def student_id(db_session):
 
 
 @pytest.fixture
-def test_application_id(client, agent_token, student_id, db_session, churchill_rto_id):
-    """Create a test application and return its ID."""
-    from app.models import CourseOffering
+def test_application_id(client, agent_token, student_token, setup_test_users):
+    """Create a fresh test application for each test.
+    
+    Since we use session-scoped users (setup_test_users), each test creates
+    its own application but uses the same agent, avoiding permission issues.
+    """
+    from app.models import CourseOffering, UserAccount, StudentProfile
     from uuid import uuid4
     
-    # Create course offering
-    course = CourseOffering(
-        id=uuid4(),
-        course_code="TEST101",
-        course_name="Test Course 101",
-        intake="2025 Semester 1",
-        campus="Sydney",
-        tuition_fee=20000.00,
-        is_active=True
-    )
-    db_session.add(course)
-    db_session.flush()
+    # Use a dedicated db session to query data (not the test's rolled-back session)
+    db = TestingSessionLocal()
+    try:
+        # Get student profile ID
+        user = db.query(UserAccount).filter(
+            UserAccount.email == "john.doe@example.com"
+        ).first()
+        student_profile_id = str(user.student_profile.id)
+        
+        # Get or create course offering
+        course = db.query(CourseOffering).filter(
+            CourseOffering.course_code == "TEST101"
+        ).first()
+        
+        if not course:
+            course = CourseOffering(
+                id=uuid4(),
+                course_code="TEST101",
+                course_name="Test Course 101",
+                intake="2025 Semester 1",
+                campus="Sydney",
+                tuition_fee=20000.00,
+                is_active=True
+            )
+            db.add(course)
+            db.commit()
+        
+        course_id = str(course.id)
+    finally:
+        db.close()
     
-    # Create application
+    # Create application via API (uses session-scoped agent)
     response = client.post(
         "/api/v1/applications",
         json={
-            "student_profile_id": student_id,
-            "course_offering_id": str(course.id)
+            "student_profile_id": student_profile_id,
+            "course_offering_id": course_id
         },
         headers={"Authorization": f"Bearer {agent_token}"}
     )

@@ -28,6 +28,8 @@ from app.schemas.student import (
     ApplicationTrackingDetailResponse, StageProgressItem,
     RequiredDocumentItem, StudentListResponse
 )
+from app.services.auth import AuthService, AuthenticationError
+from app.services.application import ApplicationService
 
 router = APIRouter()
 
@@ -219,57 +221,63 @@ async def create_student_profile(
             detail="Only agents and staff can create student profiles"
         )
     
-    # Check if email already exists
-    existing_user = db.query(UserAccount).filter(UserAccount.email == data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User with email {data.email} already exists"
+    auth_service = AuthService(db)
+    
+    try:
+        # Prepare student profile data
+        profile_data = {
+            "given_name": data.given_name,
+            "family_name": data.family_name,
+            "date_of_birth": data.date_of_birth,
+            "passport_number": data.passport_number,
+            "nationality": data.nationality,
+            "visa_type": data.visa_type,
+            "phone": data.phone,
+            "address": data.address,
+        }
+        
+        # Register student using AuthService
+        user_account = auth_service.register_user(
+            email=data.email,
+            password=data.password,
+            role=UserRole.STUDENT,
+            rto_profile_id=current_user.rto_profile_id,
+            profile_data=profile_data
+        )
+        
+        # Get created student profile
+        student_profile = db.query(StudentProfile).filter(
+            StudentProfile.user_account_id == user_account.id
+        ).first()
+        
+        # Build response
+        return StudentProfileResponse(
+            id=student_profile.id,
+            user_account_id=user_account.id,
+            email=user_account.email,
+            given_name=student_profile.given_name,
+            family_name=student_profile.family_name,
+            date_of_birth=student_profile.date_of_birth,
+            passport_number=student_profile.passport_number,
+            nationality=student_profile.nationality,
+            visa_type=student_profile.visa_type,
+            phone=student_profile.phone,
+            address=student_profile.address,
+            status=user_account.status.value,
+            created_at=student_profile.created_at
         )
     
-    # Create user account
-    user_account = UserAccount(
-        email=data.email,
-        password_hash=get_password_hash(data.password),
-        role=UserRole.STUDENT,
-        rto_profile_id=current_user.rto_profile_id,  # Inherit from agent/staff
-        status=UserStatus.ACTIVE
-    )
-    db.add(user_account)
-    db.flush()  # Get user_account.id
-    
-    # Create student profile
-    student_profile = StudentProfile(
-        user_account_id=user_account.id,
-        given_name=data.given_name,
-        family_name=data.family_name,
-        date_of_birth=data.date_of_birth,
-        passport_number=data.passport_number,
-        nationality=data.nationality,
-        visa_type=data.visa_type,
-        phone=data.phone,
-        address=data.address
-    )
-    db.add(student_profile)
-    db.commit()
-    db.refresh(student_profile)
-    
-    # Build response
-    return StudentProfileResponse(
-        id=student_profile.id,
-        user_account_id=user_account.id,
-        email=user_account.email,
-        given_name=student_profile.given_name,
-        family_name=student_profile.family_name,
-        date_of_birth=student_profile.date_of_birth,
-        passport_number=student_profile.passport_number,
-        nationality=student_profile.nationality,
-        visa_type=student_profile.visa_type,
-        phone=student_profile.phone,
-        address=student_profile.address,
-        status=user_account.status.value,
-        created_at=student_profile.created_at
-    )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create student profile: {str(e)}"
+        )
 
 
 @router.get("", response_model=StudentListResponse)

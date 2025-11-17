@@ -15,6 +15,7 @@ from app.core.security import (
 from app.db.database import get_db
 from app.models import UserAccount, UserRole, UserStatus, RtoProfile
 from app.api.dependencies import get_current_user
+from app.services.auth import AuthService, AuthenticationError, AuthorizationError
 
 router = APIRouter()
 
@@ -133,45 +134,36 @@ async def login(
     Login with email and password.
     Returns JWT access and refresh tokens.
     """
-    # Find user by email
-    user = db.query(UserAccount).filter(UserAccount.email == form_data.username).first()
+    auth_service = AuthService(db)
     
-    if not user or not verify_password(form_data.password, user.password_hash):
+    try:
+        # Authenticate and get token
+        result = auth_service.login(
+            email=form_data.username,
+            password=form_data.password
+        )
+        
+        # Get user for additional info
+        user = auth_service.get_current_user(UUID(result["user"]["id"]))
+        
+        # Create refresh token (not in service yet, keep existing logic)
+        refresh_token = create_refresh_token({"sub": result["user"]["id"]})
+        
+        return LoginResponse(
+            access_token=result["access_token"],
+            refresh_token=refresh_token,
+            user_id=UUID(result["user"]["id"]),
+            email=result["user"]["email"],
+            role=result["user"]["role"],
+            mfa_required=user.mfa_enabled
+        )
+    
+    except AuthenticationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Check user status
-    if user.status != UserStatus.ACTIVE:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account is {user.status.value}"
-        )
-    
-    # Update last login
-    user.last_login_at = datetime.utcnow()
-    db.commit()
-    
-    # Create tokens
-    token_data = {
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role.value,
-        "rto_profile_id": str(user.rto_profile_id)
-    }
-    access_token = create_access_token(token_data)
-    refresh_token = create_refresh_token({"sub": str(user.id)})
-    
-    return LoginResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user_id=user.id,
-        email=user.email,
-        role=user.role.value,
-        mfa_required=user.mfa_enabled
-    )
 
 
 @router.post("/refresh", response_model=LoginResponse)

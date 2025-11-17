@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     AZURE_STORAGE_CONTAINER_NAME: str = "documents"
     AZURE_FORM_RECOGNIZER_ENDPOINT: Optional[str] = None
     AZURE_FORM_RECOGNIZER_KEY: Optional[str] = None
+    AZURE_VISION_ENDPOINT: Optional[str] = None
+    AZURE_VISION_KEY: Optional[str] = None
     AZURE_COMMUNICATION_CONNECTION_STRING: Optional[str] = None
     
     # Redis & Celery
@@ -58,8 +60,9 @@ class Settings(BaseSettings):
     EMAILS_FROM_NAME: str = "Churchill Education"
     
     # File Upload
-    MAX_UPLOAD_SIZE_MB: int = 10
-    ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx"}
+    UPLOAD_DIR: str = "/app/uploads"
+    MAX_UPLOAD_SIZE_MB: int = 20
+    ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".gif"}
     
     # Multi-tenancy
     CHURCHILL_RTO_ID: Optional[str] = None  # Set during first migration

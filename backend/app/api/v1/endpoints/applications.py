@@ -20,6 +20,10 @@ from app.schemas.application import (
     ApplicationAssignRequest, ApplicationStageChangeRequest,
     ApplicationSummary, ApplicationDetail, ApplicationResponse
 )
+from app.services.application import (
+    ApplicationService, ApplicationError, ApplicationNotFoundError,
+    ApplicationPermissionError, ApplicationValidationError
+)
 
 router = APIRouter()
 
@@ -92,63 +96,57 @@ async def create_application_draft(
     **Permissions:** Agent/Staff/Admin only. Students cannot create applications.
     Agents create applications on behalf of students and fill all details.
     """
-    # Block students from creating applications
-    if current_user.role == UserRole.STUDENT:
+    app_service = ApplicationService(db)
+    
+    try:
+        # Validate student_profile_id is provided
+        if not request.student_profile_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="student_profile_id required when creating application"
+            )
+        
+        # Create draft application using service
+        new_app = app_service.create_draft(
+            course_offering_id=request.course_offering_id,
+            student_profile_id=request.student_profile_id,
+            agent_profile_id=request.agent_profile_id,
+            user_id=current_user.id,
+            user_role=current_user.role
+        )
+        
+        # Create timeline entry
+        _create_timeline_entry(
+            db=db,
+            application_id=new_app.id,
+            entry_type=TimelineEntryType.APPLICATION_CREATED,
+            message=f"Application created for course",
+            actor=current_user,
+            stage=ApplicationStage.DRAFT
+        )
+        db.commit()
+        
+        return ApplicationResponse(
+            application=ApplicationDetail.model_validate(new_app),
+            message="Application draft created successfully. You can now fill in the details."
+        )
+    
+    except ApplicationPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Students cannot create applications. Please contact your agent."
+            detail=str(e)
         )
-    
-    # Validate course offering exists
-    course = db.query(CourseOffering).filter(CourseOffering.id == request.course_offering_id).first()
-    if not course:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course offering not found"
-        )
-    
-    # student_profile_id is required for agents/staff
-    if not request.student_profile_id:
+    except ApplicationValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="student_profile_id required when creating application"
+            detail=str(e)
         )
-    
-    student_profile_id = request.student_profile_id
-    
-    # Create draft application
-    new_app = Application(
-        student_profile_id=student_profile_id,
-        agent_profile_id=request.agent_profile_id,
-        course_offering_id=request.course_offering_id,
-        current_stage=ApplicationStage.DRAFT,
-        form_metadata={
-            "version": "1.0",
-            "completed_sections": [],
-            "auto_save_count": 0,
-            "last_saved_at": datetime.utcnow().isoformat()
-        }
-    )
-    
-    db.add(new_app)
-    db.commit()
-    db.refresh(new_app)
-    
-    # Create timeline entry
-    _create_timeline_entry(
-        db=db,
-        application_id=new_app.id,
-        entry_type=TimelineEntryType.APPLICATION_CREATED,
-        message=f"Application created for {course.course_name}",
-        actor=current_user,
-        stage=ApplicationStage.DRAFT
-    )
-    db.commit()
-    
-    return ApplicationResponse(
-        application=ApplicationDetail.model_validate(new_app),
-        message="Application draft created successfully. You can now fill in the details."
-    )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create application: {str(e)}"
+        )
 
 
 @router.get("", response_model=List[ApplicationSummary])
@@ -172,63 +170,36 @@ async def list_applications(
     - Agents: see applications they submitted
     - Staff/Admin: see all applications (with filters)
     """
-    query = db.query(Application).options(
-        joinedload(Application.student),
-        joinedload(Application.course),
-        joinedload(Application.agent),
-        joinedload(Application.assigned_staff)
-    )
+    app_service = ApplicationService(db)
     
-    # Role-based filtering
-    if current_user.role == UserRole.STUDENT:
-        student_profile = db.query(StudentProfile).filter(
-            StudentProfile.user_account_id == current_user.id
-        ).first()
-        if student_profile:
-            query = query.filter(Application.student_profile_id == student_profile.id)
-        else:
-            return []  # Student has no profile yet
+    try:
+        # Get applications using service (handles role-based filtering)
+        applications = app_service.list_applications(
+            user_id=current_user.id,
+            user_role=current_user.role,
+            skip=offset,
+            limit=limit,
+            stage=stage
+        )
+        
+        # Build summary response with computed fields
+        results = []
+        for app in applications:
+            summary = ApplicationSummary.model_validate(app)
+            summary.student_name = f"{app.student.given_name} {app.student.family_name}" if app.student else None
+            summary.course_name = app.course.course_name if app.course else None
+            summary.agent_name = app.agent.agency_name if app.agent else None
+            summary.assigned_staff_name = app.assigned_staff.job_title if app.assigned_staff else None
+            summary.completion_percentage = _calculate_completion_percentage(app)
+            results.append(summary)
+        
+        return results
     
-    elif current_user.role == UserRole.AGENT:
-        agent_profile = db.query(AgentProfile).filter(
-            AgentProfile.user_account_id == current_user.id
-        ).first()
-        if agent_profile:
-            query = query.filter(Application.agent_profile_id == agent_profile.id)
-        else:
-            return []
-    
-    # Apply filters
-    if stage:
-        query = query.filter(Application.current_stage == stage)
-    if student_id:
-        query = query.filter(Application.student_profile_id == student_id)
-    if agent_id:
-        query = query.filter(Application.agent_profile_id == agent_id)
-    if assigned_staff_id:
-        query = query.filter(Application.assigned_staff_id == assigned_staff_id)
-    if from_date:
-        query = query.filter(Application.created_at >= from_date)
-    if to_date:
-        query = query.filter(Application.created_at <= to_date)
-    
-    # Order by most recent first
-    query = query.order_by(Application.updated_at.desc())
-    
-    applications = query.offset(offset).limit(limit).all()
-    
-    # Build summary response with computed fields
-    results = []
-    for app in applications:
-        summary = ApplicationSummary.model_validate(app)
-        summary.student_name = f"{app.student.given_name} {app.student.family_name}" if app.student else None
-        summary.course_name = app.course.course_name if app.course else None
-        summary.agent_name = app.agent.agency_name if app.agent else None
-        summary.assigned_staff_name = app.assigned_staff.job_title if app.assigned_staff else None
-        summary.completion_percentage = _calculate_completion_percentage(app)
-        results.append(summary)
-    
-    return results
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list applications: {str(e)}"
+        )
 
 
 @router.get("/{application_id}", response_model=ApplicationDetail)
@@ -242,35 +213,27 @@ async def get_application(
     
     Used for resuming draft or viewing submitted application.
     """
-    app = db.query(Application).filter(Application.id == application_id).first()
-    if not app:
+    app_service = ApplicationService(db)
+    
+    try:
+        app = app_service.get_application(
+            application_id=application_id,
+            user_id=current_user.id,
+            user_role=current_user.role
+        )
+        
+        return ApplicationDetail.model_validate(app)
+    
+    except ApplicationNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found"
+            detail=str(e)
         )
-    
-    # Permission check
-    if current_user.role == UserRole.STUDENT:
-        student_profile = db.query(StudentProfile).filter(
-            StudentProfile.user_account_id == current_user.id
-        ).first()
-        if not student_profile or app.student_profile_id != student_profile.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to view this application"
-            )
-    
-    elif current_user.role == UserRole.AGENT:
-        agent_profile = db.query(AgentProfile).filter(
-            AgentProfile.user_account_id == current_user.id
-        ).first()
-        if not agent_profile or app.agent_profile_id != agent_profile.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to view this application"
-            )
-    
-    return ApplicationDetail.model_validate(app)
+    except ApplicationPermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
 
 
 @router.patch("/{application_id}", response_model=ApplicationResponse)
@@ -287,70 +250,53 @@ async def update_application(
     Agents fill the entire application form on behalf of students.
     Supports partial updates - only provided fields are updated.
     """
-    # Block students from editing applications
-    if current_user.role == UserRole.STUDENT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Students cannot edit applications. Please contact your agent."
+    app_service = ApplicationService(db)
+    
+    try:
+        # Prepare update data
+        update_data = request.model_dump(exclude_unset=True)
+        
+        # Convert Pydantic models to dict for JSONB storage
+        for field, value in list(update_data.items()):
+            if value is not None and hasattr(value, 'model_dump'):
+                update_data[field] = value.model_dump()
+            elif isinstance(value, list) and value and hasattr(value[0], 'model_dump'):
+                update_data[field] = [item.model_dump() for item in value]
+        
+        # Update using service
+        app = app_service.update_application(
+            application_id=application_id,
+            update_data=update_data,
+            user_id=current_user.id,
+            user_role=current_user.role
+        )
+        
+        return ApplicationResponse(
+            application=ApplicationDetail.model_validate(app),
+            message="Application updated successfully"
         )
     
-    app = db.query(Application).filter(Application.id == application_id).first()
-    if not app:
+    except ApplicationNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found"
+            detail=str(e)
         )
-    
-    # Only allow updates on DRAFT applications
-    if app.current_stage != ApplicationStage.DRAFT:
+    except ApplicationPermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except ApplicationValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot update application in {app.current_stage.value} stage. Only DRAFT applications can be edited."
+            detail=str(e)
         )
-    
-    # Permission check for agents (can only edit their own applications)
-    if current_user.role == UserRole.AGENT:
-        agent_profile = db.query(AgentProfile).filter(
-            AgentProfile.user_account_id == current_user.id
-        ).first()
-        if not agent_profile or app.agent_profile_id != agent_profile.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Agents can only edit their own applications"
-            )
-    
-    # Update fields (only if provided)
-    update_data = request.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        if hasattr(app, field):
-            # Convert Pydantic models to dict for JSONB storage
-            if value is not None and hasattr(value, 'model_dump'):
-                setattr(app, field, value.model_dump())
-            elif isinstance(value, list) and value and hasattr(value[0], 'model_dump'):
-                setattr(app, field, [item.model_dump() for item in value])
-            else:
-                setattr(app, field, value)
-    
-    # Update form_metadata
-    if app.form_metadata:
-        metadata = app.form_metadata.copy() if isinstance(app.form_metadata, dict) else {}
-    else:
-        metadata = {}
-    
-    metadata['last_saved_at'] = datetime.utcnow().isoformat()
-    metadata['auto_save_count'] = metadata.get('auto_save_count', 0) + 1
-    
-    if request.form_metadata:
-        # Merge incoming metadata
-        incoming = request.form_metadata.model_dump(exclude_unset=True)
-        metadata.update(incoming)
-    
-    app.form_metadata = metadata
-    app.updated_at = datetime.utcnow()
-    
-    db.commit()
-    db.refresh(app)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update application: {str(e)}"
+        )
     
     return ApplicationResponse(
         application=ApplicationDetail.model_validate(app),
@@ -372,81 +318,53 @@ async def submit_application(
     Transitions from DRAFT → SUBMITTED stage.
     Validates all required fields are completed.
     """
-    # Block students from submitting applications
-    if current_user.role == UserRole.STUDENT:
+    app_service = ApplicationService(db)
+    
+    try:
+        # Submit using service
+        app = app_service.submit_application(
+            application_id=application_id,
+            user_id=current_user.id,
+            user_role=current_user.role
+        )
+        
+        # Create timeline entry
+        _create_timeline_entry(
+            db=db,
+            application_id=app.id,
+            entry_type=TimelineEntryType.STAGE_CHANGED,
+            message=f"Application submitted for review",
+            actor=current_user,
+            stage=ApplicationStage.SUBMITTED
+        )
+        db.commit()
+        
+        return ApplicationResponse(
+            application=ApplicationDetail.model_validate(app),
+            message="Application submitted successfully! Our team will review it shortly."
+        )
+    
+    except ApplicationNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except ApplicationPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Students cannot submit applications. Please contact your agent."
+            detail=str(e)
         )
-    
-    app = db.query(Application).filter(Application.id == application_id).first()
-    if not app:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    
-    if app.current_stage != ApplicationStage.DRAFT:
+    except ApplicationValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Application already submitted (current stage: {app.current_stage.value})"
+            detail=str(e)
         )
-    
-    # Permission check for agents (can only submit their own applications)
-    if current_user.role == UserRole.AGENT:
-        agent_profile = db.query(AgentProfile).filter(
-            AgentProfile.user_account_id == current_user.id
-        ).first()
-        if not agent_profile or app.agent_profile_id != agent_profile.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Agents can only submit their own applications"
-            )
-    
-    # Validate required fields
-    validation_errors = []
-    if not app.emergency_contacts:
-        validation_errors.append("Emergency contacts required")
-    if not app.health_cover_policy:
-        validation_errors.append("Health cover policy required")
-    if not app.language_cultural_data:
-        validation_errors.append("Language and cultural data required")
-    
-    if validation_errors:
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Validation failed: {', '.join(validation_errors)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit application: {str(e)}"
         )
-    
-    # Update stage
-    previous_stage = app.current_stage
-    app.current_stage = ApplicationStage.SUBMITTED
-    app.submitted_at = datetime.utcnow()
-    
-    # Record stage change
-    stage_history = ApplicationStageHistory(
-        application_id=app.id,
-        from_stage=previous_stage,
-        to_stage=ApplicationStage.SUBMITTED,
-        changed_by=current_user.id,
-        notes="Application submitted by agent"
-    )
-    db.add(stage_history)
-    
-    # Create timeline entry
-    _create_timeline_entry(
-        db=db,
-        application_id=app.id,
-        entry_type=TimelineEntryType.STAGE_CHANGED,
-        message=f"Application submitted for review",
-        actor=current_user,
-        stage=ApplicationStage.SUBMITTED
-    )
-    
-    db.commit()
-    db.refresh(app)
-    
-    return ApplicationResponse(
-        application=ApplicationDetail.model_validate(app),
-        message="Application submitted successfully! Our team will review it shortly."
-    )
 
 
 @router.post("/{application_id}/assign", response_model=ApplicationResponse)
