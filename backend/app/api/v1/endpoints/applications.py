@@ -89,8 +89,16 @@ async def create_application_draft(
     """
     Create new application in DRAFT stage.
     
-    Students can start filling the form and save progress.
+    **Permissions:** Agent/Staff/Admin only. Students cannot create applications.
+    Agents create applications on behalf of students and fill all details.
     """
+    # Block students from creating applications
+    if current_user.role == UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Students cannot create applications. Please contact your agent."
+        )
+    
     # Validate course offering exists
     course = db.query(CourseOffering).filter(CourseOffering.id == request.course_offering_id).first()
     if not course:
@@ -99,26 +107,14 @@ async def create_application_draft(
             detail="Course offering not found"
         )
     
-    # Determine student_profile_id
-    if current_user.role == UserRole.STUDENT:
-        # Student creating their own application
-        student_profile = db.query(StudentProfile).filter(
-            StudentProfile.user_account_id == current_user.id
-        ).first()
-        if not student_profile:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Student profile not found. Please complete your profile first."
-            )
-        student_profile_id = student_profile.id
-    elif request.student_profile_id:
-        # Agent/staff creating on behalf of student
-        student_profile_id = request.student_profile_id
-    else:
+    # student_profile_id is required for agents/staff
+    if not request.student_profile_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="student_profile_id required when creating application as agent/staff"
+            detail="student_profile_id required when creating application"
         )
+    
+    student_profile_id = request.student_profile_id
     
     # Create draft application
     new_app = Application(
@@ -287,9 +283,17 @@ async def update_application(
     """
     Update application (auto-save or manual save).
     
+    **Permissions:** Agent/Staff/Admin only. Students cannot edit applications.
+    Agents fill the entire application form on behalf of students.
     Supports partial updates - only provided fields are updated.
-    Used for draft/resume workflow.
     """
+    # Block students from editing applications
+    if current_user.role == UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Students cannot edit applications. Please contact your agent."
+        )
+    
     app = db.query(Application).filter(Application.id == application_id).first()
     if not app:
         raise HTTPException(
@@ -304,13 +308,16 @@ async def update_application(
             detail=f"Cannot update application in {app.current_stage.value} stage. Only DRAFT applications can be edited."
         )
     
-    # Permission check (same as get)
-    if current_user.role == UserRole.STUDENT:
-        student_profile = db.query(StudentProfile).filter(
-            StudentProfile.user_account_id == current_user.id
+    # Permission check for agents (can only edit their own applications)
+    if current_user.role == UserRole.AGENT:
+        agent_profile = db.query(AgentProfile).filter(
+            AgentProfile.user_account_id == current_user.id
         ).first()
-        if not student_profile or app.student_profile_id != student_profile.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        if not agent_profile or app.agent_profile_id != agent_profile.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Agents can only edit their own applications"
+            )
     
     # Update fields (only if provided)
     update_data = request.model_dump(exclude_unset=True)
@@ -361,9 +368,17 @@ async def submit_application(
     """
     Submit application for review.
     
+    **Permissions:** Agent/Staff/Admin only. Students cannot submit applications.
     Transitions from DRAFT → SUBMITTED stage.
     Validates all required fields are completed.
     """
+    # Block students from submitting applications
+    if current_user.role == UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Students cannot submit applications. Please contact your agent."
+        )
+    
     app = db.query(Application).filter(Application.id == application_id).first()
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
@@ -374,13 +389,16 @@ async def submit_application(
             detail=f"Application already submitted (current stage: {app.current_stage.value})"
         )
     
-    # Permission check
-    if current_user.role == UserRole.STUDENT:
-        student_profile = db.query(StudentProfile).filter(
-            StudentProfile.user_account_id == current_user.id
+    # Permission check for agents (can only submit their own applications)
+    if current_user.role == UserRole.AGENT:
+        agent_profile = db.query(AgentProfile).filter(
+            AgentProfile.user_account_id == current_user.id
         ).first()
-        if not student_profile or app.student_profile_id != student_profile.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        if not agent_profile or app.agent_profile_id != agent_profile.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Agents can only submit their own applications"
+            )
     
     # Validate required fields
     validation_errors = []
@@ -408,7 +426,7 @@ async def submit_application(
         from_stage=previous_stage,
         to_stage=ApplicationStage.SUBMITTED,
         changed_by=current_user.id,
-        notes="Application submitted by student"
+        notes="Application submitted by agent"
     )
     db.add(stage_history)
     
