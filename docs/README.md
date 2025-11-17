@@ -79,12 +79,9 @@ Application-Portal/
 
 ### Prerequisites
 - **Docker Desktop** for Windows (includes docker-compose)
-- Python 3.12+ (for local development)
-- PostgreSQL 16 (for local development)
-- Redis 7 (for local development)
-- Node.js 20+ (for frontend, when implemented)
+- **Git** (for cloning/pulling updates)
 
-### Option 1: Docker (Recommended) - 1 Command Setup
+### 1-Command Setup
 
 ```powershell
 # Run the automated setup script
@@ -93,51 +90,17 @@ Application-Portal/
 
 This will:
 - ✅ Check Docker installation
-- ✅ Create `.env` configuration
-- ✅ Start PostgreSQL, Redis, FastAPI
+- ✅ Create `.env` configuration with secure keys
+- ✅ Start PostgreSQL, Redis, FastAPI, Celery, pgAdmin
 - ✅ Run database migrations
 - ✅ Open API docs in browser
 
-**Access the API**: http://localhost:8000/docs
+**Access Points:**
+- **API Docs**: http://localhost:8000/docs
+- **pgAdmin**: http://localhost:5050 (admin@admin.com / admin123)
+- **Database**: localhost:5432 (churchill_user / churchill_password)
 
-**See [QUICKSTART.md](QUICKSTART.md) for Docker commands**
-
-### Option 1b: Docker (Manual)
-
-```powershell
-# 1. Create environment file
-Copy-Item backend\.env.example backend\.env
-# Edit backend\.env if needed
-
-# 2. Start services
-docker-compose -f docker-compose.dev.yml up -d --build
-
-# 3. Run database migrations
-docker exec -it churchill_backend alembic upgrade head
-
-# 4. Access API docs
-start http://localhost:8000/docs
-```
-
-### Option 2: Local Development
-
-```bash
-# 1. Set up backend
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your settings
-
-# 3. Run migrations
-alembic upgrade head
-
-# 4. Start server
-uvicorn app.main:app --reload
-```
+**For detailed setup instructions, see [SETUP.md](SETUP.md)**
 
 ## 📊 Database Schema (v3.1)
 
@@ -246,37 +209,71 @@ docker-compose --profile production up -d
 
 ## 📚 Documentation
 
-All documentation in `docs/`:
+Streamlined documentation structure for easy navigation:
 
-1. **[data-model-diagram.md](docs/data-model-diagram.md)**
-   - UML class diagrams with all attributes
-   - Entity-relationship diagrams
-   - JSONB field examples
-   - Schema evolution (v1.0 → v3.1)
+### Core Guides
+1. **[SETUP.md](SETUP.md)** - Complete setup & configuration guide
+   - Docker setup (recommended)
+   - Manual setup (local development)
+   - pgAdmin setup
+   - Frontend setup (React + TypeScript)
+   - Common commands & troubleshooting
 
-2. **[solution-architecture.md](docs/solution-architecture.md)**
-   - Complete system architecture
+2. **[API_GUIDE.md](API_GUIDE.md)** - Complete API reference
+   - Authentication flow
+   - All endpoints with examples
+   - 12-step form API
+   - Document upload & OCR
+   - Testing with Postman
+   - Frontend integration examples
+
+3. **[FEATURES.md](FEATURES.md)** - Implementation status & changelog
+   - Phase 1: Core Foundation ✅
+   - Phase 2: 12-Step Form ✅
+   - Phase 3: Documents & OCR ✅
+   - Permission model
+   - What's next
+
+4. **[DATABASE.md](DATABASE.md)** - Database schema & management
+   - 16-table schema overview
+   - JSONB consolidation rationale
+   - pgAdmin guide
+   - Common queries
+   - Migration history
+
+5. **[REFERENCE.md](REFERENCE.md)** - Quick lookups
+   - Test credentials
+   - Document type IDs
+   - Environment variables
+   - Service URLs
+   - Common commands
+
+6. **[solution-architecture.md](solution-architecture.md)** - System architecture
    - Technology stack decisions
    - API design patterns
    - Azure integration details
    - Deployment architecture
 
-3. **[SCHEMA_MIGRATION_v3.md](docs/SCHEMA_MIGRATION_v3.md)**
-   - Migration guide from v2.0 (28 tables) to v3.1 (16 tables)
-   - SQL migration scripts
-   - SQLAlchemy model examples
-   - JSONB consolidation rationale
+---
 
-4. **[requirements.md](docs/requirements.md)**
-   - Original business requirements
-   - User stories
-   - Functional specifications
+### Getting Started Path
 
-5. **[backend/README.md](backend/README.md)**
-   - Backend-specific setup
-   - Development workflow
-   - Testing guide
-   - Deployment instructions
+**New to the project?** Follow this order:
+1. Read this README for overview
+2. Follow [SETUP.md](SETUP.md) to get running
+3. Test the API using [API_GUIDE.md](API_GUIDE.md)
+4. Check [FEATURES.md](FEATURES.md) for implementation status
+5. Use [REFERENCE.md](REFERENCE.md) for quick lookups
+
+**Building the frontend?**
+1. Read [API_GUIDE.md](API_GUIDE.md) - Frontend Integration section
+2. Copy TypeScript types from `api-types.ts`
+3. Follow examples in API_GUIDE for React hooks
+
+**Database work?**
+1. Read [DATABASE.md](DATABASE.md) for schema details
+2. Set up pgAdmin using the guide
+3. Run example queries to explore data
 
 ## 🔧 Development
 
