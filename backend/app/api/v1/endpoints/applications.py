@@ -3,26 +3,38 @@ Application endpoints: CRUD operations with draft/resume support.
 """
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import get_current_user
 from app.db.database import get_db
 from app.models import (
-    Application, ApplicationStage, UserAccount, StudentProfile,
-    CourseOffering, AgentProfile, StaffProfile, TimelineEntry,
-    TimelineEntryType, UserRole, ApplicationStageHistory
+    Application,
+    ApplicationStage,
+    ApplicationStageHistory,
+    StaffProfile,
+    TimelineEntry,
+    TimelineEntryType,
+    UserAccount,
+    UserRole,
 )
-from app.api.dependencies import get_current_user
 from app.schemas.application import (
-    ApplicationCreateRequest, ApplicationUpdateRequest, ApplicationSubmitRequest,
-    ApplicationAssignRequest, ApplicationStageChangeRequest,
-    ApplicationSummary, ApplicationDetail, ApplicationResponse
+    ApplicationAssignRequest,
+    ApplicationCreateRequest,
+    ApplicationDetail,
+    ApplicationResponse,
+    ApplicationStageChangeRequest,
+    ApplicationSubmitRequest,
+    ApplicationSummary,
+    ApplicationUpdateRequest,
 )
 from app.services.application import (
-    ApplicationService, ApplicationError, ApplicationNotFoundError,
-    ApplicationPermissionError, ApplicationValidationError
+    ApplicationNotFoundError,
+    ApplicationPermissionError,
+    ApplicationService,
+    ApplicationValidationError,
 )
 
 router = APIRouter()
@@ -36,7 +48,7 @@ def _calculate_completion_percentage(app: Application) -> int:
     """Calculate form completion based on filled JSONB fields."""
     total_sections = 9
     completed = 0
-    
+
     if app.emergency_contacts:
         completed += 1
     if app.health_cover_policy:
@@ -55,7 +67,7 @@ def _calculate_completion_percentage(app: Application) -> int:
         completed += 1
     if app.enrollment_data:
         completed += 1
-    
+
     return int((completed / total_sections) * 100)
 
 
@@ -84,7 +96,8 @@ def _create_timeline_entry(
 # ENDPOINTS
 # ============================================================================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=ApplicationResponse)
+@router.post("", status_code=status.HTTP_201_CREATED,
+             response_model=ApplicationResponse)
 async def create_application_draft(
     request: ApplicationCreateRequest,
     current_user: UserAccount = Depends(get_current_user),
@@ -92,12 +105,12 @@ async def create_application_draft(
 ):
     """
     Create new application in DRAFT stage.
-    
+
     **Permissions:** Agent/Staff/Admin only. Students cannot create applications.
     Agents create applications on behalf of students and fill all details.
     """
     app_service = ApplicationService(db)
-    
+
     try:
         # Validate student_profile_id is provided
         if not request.student_profile_id:
@@ -105,7 +118,7 @@ async def create_application_draft(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="student_profile_id required when creating application"
             )
-        
+
         # Create draft application using service
         new_app = app_service.create_draft(
             course_offering_id=request.course_offering_id,
@@ -114,23 +127,22 @@ async def create_application_draft(
             user_id=current_user.id,
             user_role=current_user.role
         )
-        
+
         # Create timeline entry
         _create_timeline_entry(
             db=db,
             application_id=new_app.id,
             entry_type=TimelineEntryType.APPLICATION_CREATED,
-            message=f"Application created for course",
+            message="Application created for course",
             actor=current_user,
             stage=ApplicationStage.DRAFT
         )
         db.commit()
-        
+
         return ApplicationResponse(
             application=ApplicationDetail.model_validate(new_app),
-            message="Application draft created successfully. You can now fill in the details."
-        )
-    
+            message="Application draft created successfully. You can now fill in the details.")
+
     except ApplicationPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -164,14 +176,14 @@ async def list_applications(
 ):
     """
     List applications with filtering.
-    
+
     **Permissions:**
     - Students: see only their own applications
     - Agents: see applications they submitted
     - Staff/Admin: see all applications (with filters)
     """
     app_service = ApplicationService(db)
-    
+
     try:
         # Get applications using service (handles role-based filtering)
         applications = app_service.list_applications(
@@ -181,20 +193,23 @@ async def list_applications(
             limit=limit,
             stage=stage
         )
-        
+
         # Build summary response with computed fields
         results = []
         for app in applications:
             summary = ApplicationSummary.model_validate(app)
-            summary.student_name = f"{app.student.given_name} {app.student.family_name}" if app.student else None
+            summary.student_name = f"{
+                app.student.given_name} {
+                app.student.family_name}" if app.student else None
             summary.course_name = app.course.course_name if app.course else None
             summary.agent_name = app.agent.agency_name if app.agent else None
             summary.assigned_staff_name = app.assigned_staff.job_title if app.assigned_staff else None
-            summary.completion_percentage = _calculate_completion_percentage(app)
+            summary.completion_percentage = _calculate_completion_percentage(
+                app)
             results.append(summary)
-        
+
         return results
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -210,20 +225,20 @@ async def get_application(
 ):
     """
     Get full application details.
-    
+
     Used for resuming draft or viewing submitted application.
     """
     app_service = ApplicationService(db)
-    
+
     try:
         app = app_service.get_application(
             application_id=application_id,
             user_id=current_user.id,
             user_role=current_user.role
         )
-        
+
         return ApplicationDetail.model_validate(app)
-    
+
     except ApplicationNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -245,24 +260,24 @@ async def update_application(
 ):
     """
     Update application (auto-save or manual save).
-    
+
     **Permissions:** Agent/Staff/Admin only. Students cannot edit applications.
     Agents fill the entire application form on behalf of students.
     Supports partial updates - only provided fields are updated.
     """
     app_service = ApplicationService(db)
-    
+
     try:
         # Prepare update data
         update_data = request.model_dump(exclude_unset=True)
-        
+
         # Convert Pydantic models to dict for JSONB storage
         for field, value in list(update_data.items()):
             if value is not None and hasattr(value, 'model_dump'):
                 update_data[field] = value.model_dump()
             elif isinstance(value, list) and value and hasattr(value[0], 'model_dump'):
                 update_data[field] = [item.model_dump() for item in value]
-        
+
         # Update using service
         app = app_service.update_application(
             application_id=application_id,
@@ -270,12 +285,12 @@ async def update_application(
             user_id=current_user.id,
             user_role=current_user.role
         )
-        
+
         return ApplicationResponse(
             application=ApplicationDetail.model_validate(app),
             message="Application updated successfully"
         )
-    
+
     except ApplicationNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -297,7 +312,7 @@ async def update_application(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update application: {str(e)}"
         )
-    
+
     return ApplicationResponse(
         application=ApplicationDetail.model_validate(app),
         message="Application saved successfully"
@@ -313,13 +328,13 @@ async def submit_application(
 ):
     """
     Submit application for review.
-    
+
     **Permissions:** Agent/Staff/Admin only. Students cannot submit applications.
     Transitions from DRAFT → SUBMITTED stage.
     Validates all required fields are completed.
     """
     app_service = ApplicationService(db)
-    
+
     try:
         # Submit using service
         app = app_service.submit_application(
@@ -327,23 +342,22 @@ async def submit_application(
             user_id=current_user.id,
             user_role=current_user.role
         )
-        
+
         # Create timeline entry
         _create_timeline_entry(
             db=db,
             application_id=app.id,
             entry_type=TimelineEntryType.STAGE_CHANGED,
-            message=f"Application submitted for review",
+            message="Application submitted for review",
             actor=current_user,
             stage=ApplicationStage.SUBMITTED
         )
         db.commit()
-        
+
         return ApplicationResponse(
             application=ApplicationDetail.model_validate(app),
-            message="Application submitted successfully! Our team will review it shortly."
-        )
-    
+            message="Application submitted successfully! Our team will review it shortly.")
+
     except ApplicationNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -376,7 +390,7 @@ async def assign_application(
 ):
     """
     Assign application to staff member.
-    
+
     **Permissions:** Staff/Admin only
     """
     if current_user.role not in [UserRole.STAFF, UserRole.ADMIN]:
@@ -384,18 +398,24 @@ async def assign_application(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only staff/admin can assign applications"
         )
-    
-    app = db.query(Application).filter(Application.id == application_id).first()
+
+    app = db.query(Application).filter(
+        Application.id == application_id).first()
     if not app:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found")
+
     # Validate staff exists
-    staff = db.query(StaffProfile).filter(StaffProfile.id == request.staff_id).first()
+    staff = db.query(StaffProfile).filter(
+        StaffProfile.id == request.staff_id).first()
     if not staff:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff member not found")
+
     app.assigned_staff_id = request.staff_id
-    
+
     # Create timeline entry
     _create_timeline_entry(
         db=db,
@@ -404,17 +424,18 @@ async def assign_application(
         message=f"Application assigned to {staff.job_title}",
         actor=current_user
     )
-    
+
     db.commit()
     db.refresh(app)
-    
+
     return ApplicationResponse(
         application=ApplicationDetail.model_validate(app),
         message=f"Application assigned to {staff.job_title}"
     )
 
 
-@router.post("/{application_id}/change-stage", response_model=ApplicationResponse)
+@router.post("/{application_id}/change-stage",
+             response_model=ApplicationResponse)
 async def change_application_stage(
     application_id: UUID,
     request: ApplicationStageChangeRequest,
@@ -423,7 +444,7 @@ async def change_application_stage(
 ):
     """
     Transition application to new stage.
-    
+
     **Permissions:** Staff/Admin only
     """
     if current_user.role not in [UserRole.STAFF, UserRole.ADMIN]:
@@ -431,14 +452,17 @@ async def change_application_stage(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only staff/admin can change application stage"
         )
-    
-    app = db.query(Application).filter(Application.id == application_id).first()
+
+    app = db.query(Application).filter(
+        Application.id == application_id).first()
     if not app:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found")
+
     previous_stage = app.current_stage
     app.current_stage = request.to_stage
-    
+
     # Record stage change
     stage_history = ApplicationStageHistory(
         application_id=app.id,
@@ -448,20 +472,21 @@ async def change_application_stage(
         notes=request.notes
     )
     db.add(stage_history)
-    
+
     # Create timeline entry
     _create_timeline_entry(
         db=db,
         application_id=app.id,
         entry_type=TimelineEntryType.STAGE_CHANGED,
-        message=f"Stage changed: {previous_stage.value} → {request.to_stage.value}",
+        message=f"Stage changed: {
+            previous_stage.value} → {
+            request.to_stage.value}",
         actor=current_user,
-        stage=request.to_stage
-    )
-    
+        stage=request.to_stage)
+
     db.commit()
     db.refresh(app)
-    
+
     return ApplicationResponse(
         application=ApplicationDetail.model_validate(app),
         message=f"Application moved to {request.to_stage.value}"

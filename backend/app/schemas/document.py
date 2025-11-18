@@ -2,16 +2,17 @@
 Document schemas for upload, OCR, and retrieval.
 """
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from app.models import DocumentStatus, OCRStatus
 
-
 # ============================================================================
 # REQUEST SCHEMAS
 # ============================================================================
+
 
 class DocumentUploadRequest(BaseModel):
     """Metadata for document upload (multipart/form-data)."""
@@ -52,7 +53,7 @@ class DocumentVersionResponse(BaseModel):
     ocr_json: Optional[Dict[str, Any]] = None
     preview_url: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -66,7 +67,7 @@ class DocumentTypeResponse(BaseModel):
     is_mandatory: bool
     ocr_model_ref: Optional[str] = None
     display_order: int
-    
+
     class Config:
         from_attributes = True
 
@@ -82,16 +83,16 @@ class DocumentResponse(BaseModel):
     ocr_status: OCRStatus
     ocr_completed_at: Optional[datetime] = None
     gs_document_requests: Optional[List[Dict[str, Any]]] = None
-    
+
     # Relationships
     document_type: Optional[DocumentTypeResponse] = None
     versions: Optional[List[DocumentVersionResponse]] = []
     latest_version: Optional[DocumentVersionResponse] = None
-    
+
     # Uploader info (computed)
     uploader_email: Optional[str] = None
     uploader_name: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -110,7 +111,7 @@ class DocumentListResponse(BaseModel):
     uploader_email: Optional[str] = None
     file_size_bytes: Optional[int] = None
     latest_version_id: Optional[UUID] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -128,7 +129,8 @@ class OCRResultResponse(BaseModel):
     ocr_status: OCRStatus
     extracted_data: Optional[Dict[str, Any]] = None
     confidence_scores: Optional[Dict[str, float]] = None
-    suggested_mappings: Optional[Dict[str, Any]] = None  # Field mappings for auto-fill
+    # Field mappings for auto-fill
+    suggested_mappings: Optional[Dict[str, Any]] = None
     raw_text: Optional[str] = None
     processing_time_ms: Optional[int] = None
 

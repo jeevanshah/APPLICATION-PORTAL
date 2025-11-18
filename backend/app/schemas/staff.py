@@ -1,17 +1,18 @@
 """
 Staff workflow schemas for dashboard, application review, and document verification.
 """
-from datetime import datetime, date
-from typing import Optional, List, Dict, Any
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models import ApplicationStage, DocumentStatus, UserRole
-
 
 # ============================================================================
 # STAFF DASHBOARD SCHEMAS
 # ============================================================================
+
 
 class StaffMetrics(BaseModel):
     """Dashboard metrics for staff workload."""
@@ -33,7 +34,7 @@ class StudentSummary(BaseModel):
     family_name: str
     email: str
     nationality: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -44,7 +45,7 @@ class CourseSummary(BaseModel):
     course_name: str
     intake: str
     campus: str
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -53,7 +54,7 @@ class AgentSummary(BaseModel):
     id: UUID
     agency_name: str
     email: str
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -66,7 +67,7 @@ class DocumentSummaryForStaff(BaseModel):
     ocr_status: str
     uploaded_at: datetime
     version_count: int
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -83,7 +84,7 @@ class ApplicationListItem(BaseModel):
     documents_verified: int = 0
     documents_pending: int = 0
     assigned_staff_email: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -108,7 +109,7 @@ class SchoolingHistoryDetail(BaseModel):
     end_year: Optional[int] = None
     qualification_level: str
     result: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -119,7 +120,7 @@ class QualificationHistoryDetail(BaseModel):
     institution: str
     completion_date: date
     certificate_number: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -132,7 +133,7 @@ class EmploymentHistoryDetail(BaseModel):
     end_date: Optional[date] = None
     is_current: bool
     responsibilities: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -145,7 +146,7 @@ class TimelineEntryDetail(BaseModel):
     actor_role: Optional[UserRole] = None
     created_at: datetime
     event_payload: Optional[Dict[str, Any]] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -158,11 +159,11 @@ class ApplicationDetailForReview(BaseModel):
     current_stage: ApplicationStage
     submitted_at: Optional[datetime] = None
     decision_at: Optional[datetime] = None
-    
+
     # USI
     usi: Optional[str] = None
     usi_verified: bool = False
-    
+
     # JSONB fields
     enrollment_data: Optional[Dict[str, Any]] = None
     emergency_contacts: Optional[List[Dict[str, Any]]] = None
@@ -173,21 +174,21 @@ class ApplicationDetailForReview(BaseModel):
     additional_services: Optional[List[Dict[str, Any]]] = None
     gs_assessment: Optional[Dict[str, Any]] = None
     form_metadata: Optional[Dict[str, Any]] = None
-    
+
     # Normalized history
     schooling_history: List[SchoolingHistoryDetail] = []
     qualification_history: List[QualificationHistoryDetail] = []
     employment_history: List[EmploymentHistoryDetail] = []
-    
+
     # Documents
     documents: List[DocumentSummaryForStaff] = []
-    
+
     # Timeline
     timeline: List[TimelineEntryDetail] = []
-    
+
     # Staff assignment
     assigned_staff_email: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -210,7 +211,7 @@ class VerifyDocumentRequest(BaseModel):
     """Request to verify or reject document."""
     status: DocumentStatus = Field(..., description="VERIFIED or REJECTED")
     notes: Optional[str] = None
-    
+
     @field_validator('status')
     @classmethod
     def validate_status(cls, v):

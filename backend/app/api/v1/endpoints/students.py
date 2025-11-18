@@ -9,27 +9,36 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, desc, func
+from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import get_current_user, get_db
-from app.core.security import get_password_hash
-from app.db.database import get_db
 from app.models import (
-    UserAccount, UserRole, UserStatus, StudentProfile, Application, 
-    ApplicationStage, CourseOffering, AgentProfile, StaffProfile,
-    TimelineEntry, TimelineEntryType, Document, DocumentType, DocumentStatus,
-    OCRStatus, ApplicationStageHistory
+    AgentProfile,
+    Application,
+    ApplicationStage,
+    ApplicationStageHistory,
+    Document,
+    DocumentType,
+    StaffProfile,
+    StudentProfile,
+    TimelineEntry,
+    UserAccount,
+    UserRole,
 )
 from app.schemas.student import (
-    StudentProfileCreateRequest, StudentProfileUpdateRequest,
-    StudentProfileResponse, StudentDashboardResponse,
-    ApplicationSummaryForStudent, RecentTimelineActivity,
-    ApplicationTrackingDetailResponse, StageProgressItem,
-    RequiredDocumentItem, StudentListResponse
+    ApplicationSummaryForStudent,
+    ApplicationTrackingDetailResponse,
+    RecentTimelineActivity,
+    RequiredDocumentItem,
+    StageProgressItem,
+    StudentDashboardResponse,
+    StudentListResponse,
+    StudentProfileCreateRequest,
+    StudentProfileResponse,
+    StudentProfileUpdateRequest,
 )
-from app.services.auth import AuthService, AuthenticationError
-from app.services.application import ApplicationService
+from app.services.auth import AuthService
 
 router = APIRouter()
 
@@ -38,7 +47,9 @@ router = APIRouter()
 # HELPER FUNCTIONS
 # ============================================================================
 
-def _calculate_stage_progress(application: Application, db: Session) -> List[StageProgressItem]:
+def _calculate_stage_progress(
+        application: Application,
+        db: Session) -> List[StageProgressItem]:
     """Calculate progress through application stages with durations."""
     all_stages = [
         ApplicationStage.DRAFT,
@@ -50,15 +61,15 @@ def _calculate_stage_progress(application: Application, db: Session) -> List[Sta
         ApplicationStage.OFFER_ACCEPTED,
         ApplicationStage.ENROLLED
     ]
-    
+
     # Get stage history
     stage_history = db.query(ApplicationStageHistory).filter(
         ApplicationStageHistory.application_id == application.id
     ).order_by(ApplicationStageHistory.changed_at).all()
-    
+
     progress = []
     current_stage = application.current_stage
-    
+
     # Build stage progress list
     for i, stage in enumerate(all_stages):
         # Find when this stage was entered
@@ -66,17 +77,19 @@ def _calculate_stage_progress(application: Application, db: Session) -> List[Sta
             (h for h in stage_history if h.to_stage == stage),
             None
         )
-        
+
         if history_entry:
             # Calculate duration in this stage
             if i + 1 < len(stage_history):
                 next_entry = stage_history[i + 1]
-                duration = (next_entry.changed_at - history_entry.changed_at).days
+                duration = (
+                    next_entry.changed_at -
+                    history_entry.changed_at).days
             elif stage == current_stage:
                 duration = (datetime.utcnow() - history_entry.changed_at).days
             else:
                 duration = None
-            
+
             progress.append(StageProgressItem(
                 stage=stage.value,
                 status="current" if stage == current_stage else "completed",
@@ -91,11 +104,13 @@ def _calculate_stage_progress(application: Application, db: Session) -> List[Sta
                 completed_at=None,
                 duration_days=None
             ))
-    
+
     return progress
 
 
-def _get_required_documents(application: Application, db: Session) -> List[RequiredDocumentItem]:
+def _get_required_documents(
+        application: Application,
+        db: Session) -> List[RequiredDocumentItem]:
     """Get list of required documents with upload status."""
     # Get all document types required for current and previous stages
     stage_order = [
@@ -108,20 +123,21 @@ def _get_required_documents(application: Application, db: Session) -> List[Requi
         ApplicationStage.OFFER_ACCEPTED,
         ApplicationStage.ENROLLED
     ]
-    
+
     current_stage_index = stage_order.index(application.current_stage)
-    relevant_stages = stage_order[:current_stage_index + 2]  # Include current + 1 future stage
-    
+    # Include current + 1 future stage
+    relevant_stages = stage_order[:current_stage_index + 2]
+
     # Get required document types
     document_types = db.query(DocumentType).filter(
         DocumentType.stage.in_(relevant_stages)
     ).order_by(DocumentType.display_order).all()
-    
+
     # Get uploaded documents
     uploaded_docs = db.query(Document).filter(
         Document.application_id == application.id
     ).all()
-    
+
     required_docs = []
     for doc_type in document_types:
         # Find if this document type has been uploaded
@@ -129,7 +145,7 @@ def _get_required_documents(application: Application, db: Session) -> List[Requi
             (d for d in uploaded_docs if d.document_type_id == doc_type.id),
             None
         )
-        
+
         required_docs.append(RequiredDocumentItem(
             document_type_code=doc_type.code,
             document_type_name=doc_type.name,
@@ -138,14 +154,16 @@ def _get_required_documents(application: Application, db: Session) -> List[Requi
             uploaded_at=uploaded_doc.uploaded_at if uploaded_doc else None,
             ocr_status=uploaded_doc.ocr_status.value if uploaded_doc else None
         ))
-    
+
     return required_docs
 
 
-def _generate_next_steps(application: Application, required_docs: List[RequiredDocumentItem]) -> List[str]:
+def _generate_next_steps(
+        application: Application,
+        required_docs: List[RequiredDocumentItem]) -> List[str]:
     """Generate actionable next steps for the student."""
     next_steps = []
-    
+
     if application.current_stage == ApplicationStage.DRAFT:
         next_steps.append("Complete your application form and submit it")
         # Check for missing required sections
@@ -155,41 +173,43 @@ def _generate_next_steps(application: Application, required_docs: List[RequiredD
             next_steps.append("Provide health cover policy details")
         if not application.language_cultural_data:
             next_steps.append("Complete language and cultural information")
-    
+
     elif application.current_stage == ApplicationStage.SUBMITTED:
         next_steps.append("Your application is under review by our staff")
         next_steps.append("Please check back regularly for updates")
-    
+
     elif application.current_stage == ApplicationStage.AWAITING_DOCUMENTS:
         # List missing mandatory documents
         missing_docs = [
-            doc for doc in required_docs 
+            doc for doc in required_docs
             if doc.is_mandatory and doc.status is None
         ]
         if missing_docs:
-            next_steps.append(f"Upload {len(missing_docs)} required document(s):")
+            next_steps.append(
+                f"Upload {
+                    len(missing_docs)} required document(s):")
             for doc in missing_docs[:3]:  # Show max 3
                 next_steps.append(f"  • {doc.document_type_name}")
-    
+
     elif application.current_stage == ApplicationStage.GS_ASSESSMENT:
         next_steps.append("Genuine Student assessment is in progress")
         next_steps.append("You may be contacted for an interview")
-    
+
     elif application.current_stage == ApplicationStage.OFFER_GENERATED:
         next_steps.append("Congratulations! An offer has been generated")
         next_steps.append("Review and accept your offer to proceed")
-    
+
     elif application.current_stage == ApplicationStage.OFFER_ACCEPTED:
         next_steps.append("Complete enrollment formalities")
         next_steps.append("Pay tuition fees if not already paid")
-    
+
     elif application.current_stage == ApplicationStage.ENROLLED:
         next_steps.append("Welcome! You are now enrolled")
         next_steps.append("Check your email for orientation details")
-    
+
     if not next_steps:
         next_steps.append("No action required at this time")
-    
+
     return next_steps
 
 
@@ -197,7 +217,8 @@ def _generate_next_steps(application: Application, required_docs: List[RequiredD
 # STUDENT PROFILE ENDPOINTS (Agent creates students)
 # ============================================================================
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=StudentProfileResponse)
+@router.post("", status_code=status.HTTP_201_CREATED,
+             response_model=StudentProfileResponse)
 async def create_student_profile(
     data: StudentProfileCreateRequest,
     current_user: UserAccount = Depends(get_current_user),
@@ -205,9 +226,9 @@ async def create_student_profile(
 ):
     """
     Create a new student profile with login credentials.
-    
+
     **Permissions**: Agents and Staff can create student profiles.
-    
+
     **Workflow**:
     1. Agent enters student details and initial password
     2. System creates user account + student profile
@@ -215,14 +236,17 @@ async def create_student_profile(
     4. First login may prompt password reset
     """
     # Permission check: only agents and staff can create students
-    if current_user.role not in [UserRole.AGENT, UserRole.STAFF, UserRole.ADMIN]:
+    if current_user.role not in [
+            UserRole.AGENT,
+            UserRole.STAFF,
+            UserRole.ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only agents and staff can create student profiles"
         )
-    
+
     auth_service = AuthService(db)
-    
+
     try:
         # Prepare student profile data
         profile_data = {
@@ -235,7 +259,7 @@ async def create_student_profile(
             "phone": data.phone,
             "address": data.address,
         }
-        
+
         # Register student using AuthService
         user_account = auth_service.register_user(
             email=data.email,
@@ -244,12 +268,12 @@ async def create_student_profile(
             rto_profile_id=current_user.rto_profile_id,
             profile_data=profile_data
         )
-        
+
         # Get created student profile
         student_profile = db.query(StudentProfile).filter(
             StudentProfile.user_account_id == user_account.id
         ).first()
-        
+
         # Build response
         return StudentProfileResponse(
             id=student_profile.id,
@@ -266,7 +290,7 @@ async def create_student_profile(
             status=user_account.status.value,
             created_at=student_profile.created_at
         )
-    
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -282,37 +306,46 @@ async def create_student_profile(
 
 @router.get("", response_model=StudentListResponse)
 async def list_students(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Search by name, email, or passport"),
+    page: int = Query(
+        1,
+        ge=1),
+    page_size: int = Query(
+        20,
+        ge=1,
+        le=100),
+    search: Optional[str] = Query(
+        None,
+        description="Search by name, email, or passport"),
     nationality: Optional[str] = Query(None),
     current_user: UserAccount = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+    db: Session = Depends(get_db)):
     """
     List students with pagination and filters.
-    
-    **Permissions**: 
+
+    **Permissions**:
     - Agents see students they created applications for
     - Staff/Admin see all students
     """
     # Permission check
-    if current_user.role not in [UserRole.AGENT, UserRole.STAFF, UserRole.ADMIN]:
+    if current_user.role not in [
+            UserRole.AGENT,
+            UserRole.STAFF,
+            UserRole.ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only agents and staff can list students"
         )
-    
+
     # Base query
     query = db.query(StudentProfile).join(UserAccount)
-    
+
     # Apply filters
     if current_user.role == UserRole.AGENT:
         # Agents see only students for whom they created applications
         query = query.join(Application).filter(
             Application.agent_profile_id == current_user.agent_profile.id
         ).distinct()
-    
+
     if search:
         search_filter = f"%{search}%"
         query = query.filter(
@@ -321,16 +354,16 @@ async def list_students(
             (StudentProfile.passport_number.ilike(search_filter)) |
             (UserAccount.email.ilike(search_filter))
         )
-    
+
     if nationality:
         query = query.filter(StudentProfile.nationality == nationality)
-    
+
     # Get total count
     total = query.count()
-    
+
     # Paginate
     students = query.offset((page - 1) * page_size).limit(page_size).all()
-    
+
     # Build response
     student_responses = []
     for student in students:
@@ -349,7 +382,7 @@ async def list_students(
             status=student.user_account.status.value,
             created_at=student.created_at
         ))
-    
+
     return StudentListResponse(
         students=student_responses,
         total=total,
@@ -369,9 +402,9 @@ async def get_student_dashboard(
 ):
     """
     Get student dashboard with applications and recent activity.
-    
+
     **Permissions**: Students can only view their own dashboard.
-    
+
     **Returns**:
     - Student profile information
     - List of all applications (with completion %)
@@ -384,26 +417,29 @@ async def get_student_dashboard(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only students can access student dashboard"
         )
-    
+
     # Get student profile
     student_profile = db.query(StudentProfile).filter(
         StudentProfile.user_account_id == current_user.id
     ).first()
-    
+
     if not student_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student profile not found"
         )
-    
+
     # Get all applications for this student
     applications = db.query(Application).filter(
-        Application.student_profile_id == student_profile.id
-    ).options(
-        joinedload(Application.course),
-        joinedload(Application.assigned_staff).joinedload(StaffProfile.user_account)
-    ).order_by(desc(Application.updated_at)).all()
-    
+        Application.student_profile_id == student_profile.id).options(
+        joinedload(
+            Application.course),
+        joinedload(
+            Application.assigned_staff).joinedload(
+            StaffProfile.user_account)).order_by(
+        desc(
+            Application.updated_at)).all()
+
     # Build application summaries
     app_summaries = []
     stats = {
@@ -414,12 +450,12 @@ async def get_student_dashboard(
         "offers_count": 0,
         "enrolled_count": 0
     }
-    
+
     for app in applications:
         # Calculate completion percentage
         from app.api.v1.endpoints.applications import _calculate_completion_percentage
         completion = _calculate_completion_percentage(app)
-        
+
         # Update stats
         if app.current_stage == ApplicationStage.DRAFT:
             stats["draft_count"] += 1
@@ -431,12 +467,12 @@ async def get_student_dashboard(
             stats["offers_count"] += 1
         elif app.current_stage == ApplicationStage.ENROLLED:
             stats["enrolled_count"] += 1
-        
+
         # Get assigned staff name
         assigned_staff_name = None
         if app.assigned_staff:
             assigned_staff_name = f"{app.assigned_staff.job_title or 'Staff'}"
-        
+
         app_summaries.append(ApplicationSummaryForStudent(
             id=app.id,
             course_code=app.course.course_code,
@@ -448,26 +484,28 @@ async def get_student_dashboard(
             last_updated=app.updated_at,
             assigned_staff_name=assigned_staff_name
         ))
-    
+
     # Get recent timeline activities (last 10 across all applications)
     recent_timeline = db.query(TimelineEntry).filter(
         TimelineEntry.application_id.in_([app.id for app in applications])
     ).options(
         joinedload(TimelineEntry.actor)
     ).order_by(desc(TimelineEntry.created_at)).limit(10).all()
-    
+
     recent_activity = []
     for entry in recent_timeline:
         actor_name = None
         if entry.actor:
             # Try to get name from profile
             if entry.actor.role == UserRole.STUDENT and entry.actor.student_profile:
-                actor_name = f"{entry.actor.student_profile.given_name} {entry.actor.student_profile.family_name}"
+                actor_name = f"{
+                    entry.actor.student_profile.given_name} {
+                    entry.actor.student_profile.family_name}"
             elif entry.actor.role == UserRole.AGENT and entry.actor.agent_profile:
                 actor_name = entry.actor.agent_profile.agency_name
             elif entry.actor.role in [UserRole.STAFF, UserRole.ADMIN] and entry.actor.staff_profile:
                 actor_name = entry.actor.staff_profile.job_title or "Staff"
-        
+
         recent_activity.append(RecentTimelineActivity(
             id=entry.id,
             application_id=entry.application_id,
@@ -476,7 +514,7 @@ async def get_student_dashboard(
             created_at=entry.created_at,
             actor_name=actor_name
         ))
-    
+
     # Build student profile response
     student_response = StudentProfileResponse(
         id=student_profile.id,
@@ -493,7 +531,7 @@ async def get_student_dashboard(
         status=current_user.status.value,
         created_at=student_profile.created_at
     )
-    
+
     return StudentDashboardResponse(
         student=student_response,
         applications=app_summaries,
@@ -506,7 +544,8 @@ async def get_student_dashboard(
 # APPLICATION TRACKING (Student tracks specific application)
 # ============================================================================
 
-@router.get("/me/applications/{application_id}/track", response_model=ApplicationTrackingDetailResponse)
+@router.get("/me/applications/{application_id}/track",
+            response_model=ApplicationTrackingDetailResponse)
 async def track_application(
     application_id: UUID,
     current_user: UserAccount = Depends(get_current_user),
@@ -514,9 +553,9 @@ async def track_application(
 ):
     """
     Get detailed tracking information for a specific application.
-    
+
     **Permissions**: Students can only track their own applications.
-    
+
     **Returns**:
     - Application details (course, stage, completion %)
     - Stage-by-stage progress with durations
@@ -531,64 +570,67 @@ async def track_application(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only students can track applications"
         )
-    
+
     # Get student profile
     student_profile = db.query(StudentProfile).filter(
         StudentProfile.user_account_id == current_user.id
     ).first()
-    
+
     if not student_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student profile not found"
         )
-    
+
     # Get application with relationships
     application = db.query(Application).filter(
         and_(
             Application.id == application_id,
-            Application.student_profile_id == student_profile.id
-        )
-    ).options(
-        joinedload(Application.course),
-        joinedload(Application.agent).joinedload(AgentProfile.user_account),
-        joinedload(Application.assigned_staff).joinedload(StaffProfile.user_account)
-    ).first()
-    
+            Application.student_profile_id == student_profile.id)).options(
+        joinedload(
+            Application.course),
+        joinedload(
+            Application.agent).joinedload(
+            AgentProfile.user_account),
+        joinedload(
+            Application.assigned_staff).joinedload(
+            StaffProfile.user_account)).first()
+
     if not application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found or you don't have permission to view it"
-        )
-    
+            detail="Application not found or you don't have permission to view it")
+
     # Calculate completion percentage
     from app.api.v1.endpoints.applications import _calculate_completion_percentage
     completion = _calculate_completion_percentage(application)
-    
+
     # Get stage progress
     stage_progress = _calculate_stage_progress(application, db)
-    
+
     # Get required documents
     required_docs = _get_required_documents(application, db)
-    
+
     # Get timeline history
     timeline_entries = db.query(TimelineEntry).filter(
         TimelineEntry.application_id == application_id
     ).options(
         joinedload(TimelineEntry.actor)
     ).order_by(desc(TimelineEntry.created_at)).all()
-    
+
     timeline_items = []
     for entry in timeline_entries:
         actor_name = None
         if entry.actor:
             if entry.actor.role == UserRole.STUDENT and entry.actor.student_profile:
-                actor_name = f"{entry.actor.student_profile.given_name} {entry.actor.student_profile.family_name}"
+                actor_name = f"{
+                    entry.actor.student_profile.given_name} {
+                    entry.actor.student_profile.family_name}"
             elif entry.actor.role == UserRole.AGENT and entry.actor.agent_profile:
                 actor_name = entry.actor.agent_profile.agency_name
             elif entry.actor.role in [UserRole.STAFF, UserRole.ADMIN] and entry.actor.staff_profile:
                 actor_name = entry.actor.staff_profile.job_title or "Staff"
-        
+
         timeline_items.append(RecentTimelineActivity(
             id=entry.id,
             application_id=entry.application_id,
@@ -597,7 +639,7 @@ async def track_application(
             created_at=entry.created_at,
             actor_name=actor_name
         ))
-    
+
     # Get agent information
     agent_name = None
     agent_agency = None
@@ -606,17 +648,17 @@ async def track_application(
         agent_name = application.agent.user_account.email
         agent_agency = application.agent.agency_name
         agent_phone = application.agent.phone
-    
+
     # Get assigned staff information
     assigned_staff_name = None
     assigned_staff_email = None
     if application.assigned_staff:
         assigned_staff_name = application.assigned_staff.job_title or "Staff"
         assigned_staff_email = application.assigned_staff.user_account.email
-    
+
     # Generate next steps
     next_steps = _generate_next_steps(application, required_docs)
-    
+
     return ApplicationTrackingDetailResponse(
         id=application.id,
         course_code=application.course.course_code,
@@ -652,7 +694,7 @@ async def update_my_profile(
 ):
     """
     Update student's own profile.
-    
+
     **Permissions**: Students can update their own profile.
     """
     # Permission check
@@ -661,26 +703,26 @@ async def update_my_profile(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only students can update their profile"
         )
-    
+
     # Get student profile
     student_profile = db.query(StudentProfile).filter(
         StudentProfile.user_account_id == current_user.id
     ).first()
-    
+
     if not student_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student profile not found"
         )
-    
+
     # Update fields
     update_data = data.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(student_profile, field, value)
-    
+
     db.commit()
     db.refresh(student_profile)
-    
+
     return StudentProfileResponse(
         id=student_profile.id,
         user_account_id=current_user.id,

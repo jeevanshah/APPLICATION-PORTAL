@@ -2,37 +2,36 @@
 Document upload and management endpoints.
 Handles file uploads, OCR processing, and document retrieval.
 """
-from typing import List, Optional
+from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import get_current_user, get_db
 from app.models import UserRole
 from app.schemas.document import (
-    DocumentResponse,
     DocumentListResponse,
-    DocumentUploadResponse,
-    OCRResultResponse,
-    OCRAutoFillResponse,
-    DocumentVerifyRequest,
+    DocumentResponse,
     DocumentStatsResponse,
-    DocumentTypeResponse,
+    DocumentUploadResponse,
+    DocumentVerifyRequest,
+    OCRAutoFillResponse,
+    OCRResultResponse,
 )
 from app.services.document import (
-    DocumentService,
-    DocumentError,
     DocumentNotFoundError,
     DocumentPermissionError,
+    DocumentService,
     DocumentValidationError,
-    FileUploadError
+    FileUploadError,
 )
-
 
 router = APIRouter()
 
 
-@router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DocumentUploadResponse,
+             status_code=status.HTTP_201_CREATED)
 async def upload_document(
     application_id: UUID = Form(...),
     document_type_id: UUID = Form(...),
@@ -43,37 +42,37 @@ async def upload_document(
 ):
     """
     Upload a document for an application.
-    
+
     - **application_id**: UUID of the application
     - **document_type_id**: UUID of the document type
     - **file**: Document file (PDF, JPG, PNG, etc.)
     - **process_ocr**: Whether to process OCR (default: true)
-    
+
     **Permissions:**
     - Agent: Can upload to their own applications
-    - Student: Can upload to their own applications  
+    - Student: Can upload to their own applications
     - Staff: Can upload to assigned applications
     - Admin: Can upload to any application
-    
+
     **File Requirements:**
     - Allowed types: PDF, JPG, JPEG, PNG, TIFF, BMP, GIF
     - Maximum size: 20MB
-    
+
     **OCR Processing:**
     - If enabled, extracts text and structured data
     - Results available via GET /documents/{id}/ocr
     - Auto-fill suggestions via GET /applications/{id}/documents/autofill
     """
     service = DocumentService(db)
-    
+
     try:
         # Read file content
         file_content = await file.read()
-        
+
         # Create BytesIO object for service
         from io import BytesIO
         file_obj = BytesIO(file_content)
-        
+
         document = await service.upload_document(
             application_id=application_id,
             document_type_id=document_type_id,
@@ -83,14 +82,13 @@ async def upload_document(
             user_role=UserRole(current_user["role"]),
             process_ocr=process_ocr
         )
-        
+
         # Build response
         return {
             "document": document,
             "message": "Document uploaded successfully",
-            "ocr_queued": process_ocr and document.ocr_status.value == "PENDING"
-        }
-        
+            "ocr_queued": process_ocr and document.ocr_status.value == "PENDING"}
+
     except DocumentPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -122,15 +120,15 @@ async def get_document(
 ):
     """
     Get document by ID.
-    
+
     - **document_id**: Document UUID
     - **include_versions**: Include all document versions (default: false)
-    
+
     **Permissions:**
     - User must have access to the application
     """
     service = DocumentService(db)
-    
+
     try:
         document = service.get_document(
             document_id=document_id,
@@ -138,9 +136,9 @@ async def get_document(
             user_role=UserRole(current_user["role"]),
             include_versions=include_versions
         )
-        
+
         return document
-        
+
     except DocumentNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -161,11 +159,11 @@ async def get_ocr_results(
 ):
     """
     Get OCR extraction results for a document.
-    
+
     Returns extracted text, structured data, and confidence scores.
     """
     service = DocumentService(db)
-    
+
     try:
         document = service.get_document(
             document_id=document_id,
@@ -173,24 +171,24 @@ async def get_ocr_results(
             user_role=UserRole(current_user["role"]),
             include_versions=True
         )
-        
+
         if document.ocr_status.value != "COMPLETED":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"OCR not completed. Status: {document.ocr_status.value}"
-            )
-        
+                detail=f"OCR not completed. Status: {
+                    document.ocr_status.value}")
+
         # Get latest version with OCR data
         latest_version = service.doc_repo.get_latest_version(document_id)
-        
+
         if not latest_version or not latest_version.ocr_json:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="OCR results not found"
             )
-        
+
         ocr_data = latest_version.ocr_json
-        
+
         return {
             "document_id": document_id,
             "ocr_status": document.ocr_status,
@@ -200,7 +198,7 @@ async def get_ocr_results(
             "raw_text": ocr_data.get("raw_text"),
             "processing_time_ms": ocr_data.get("processing_time_ms")
         }
-        
+
     except DocumentNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -221,20 +219,20 @@ async def delete_document(
 ):
     """
     Delete a document (soft delete).
-    
+
     Only the uploader or admin can delete documents.
     """
     service = DocumentService(db)
-    
+
     try:
         service.delete_document(
             document_id=document_id,
             user_id=UUID(current_user["sub"]),
             user_role=UserRole(current_user["role"])
         )
-        
+
         return None
-        
+
     except DocumentNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -256,11 +254,11 @@ async def verify_document(
 ):
     """
     Verify or reject a document (staff/admin only).
-    
+
     Updates document status to APPROVED or REJECTED.
     """
     service = DocumentService(db)
-    
+
     try:
         document = service.verify_document(
             document_id=document_id,
@@ -269,9 +267,9 @@ async def verify_document(
             user_role=UserRole(current_user["role"]),
             notes=data.notes
         )
-        
+
         return document
-        
+
     except DocumentNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -286,7 +284,8 @@ async def verify_document(
 
 # Application-scoped document endpoints
 
-@router.get("/application/{application_id}/list", response_model=List[DocumentListResponse])
+@router.get("/application/{application_id}/list",
+            response_model=List[DocumentListResponse])
 async def list_application_documents(
     application_id: UUID,
     db: Session = Depends(get_db),
@@ -294,23 +293,23 @@ async def list_application_documents(
 ):
     """
     List all documents for an application.
-    
+
     Returns lightweight list of documents with basic info.
     """
     service = DocumentService(db)
-    
+
     try:
         documents = service.get_application_documents(
             application_id=application_id,
             user_id=UUID(current_user["sub"]),
             user_role=UserRole(current_user["role"])
         )
-        
+
         # Convert to list response format
         result = []
         for doc in documents:
             latest_version = service.doc_repo.get_latest_version(doc.id)
-            
+
             result.append({
                 "id": doc.id,
                 "application_id": doc.application_id,
@@ -325,9 +324,9 @@ async def list_application_documents(
                 "file_size_bytes": latest_version.file_size_bytes if latest_version else None,
                 "latest_version_id": latest_version.id if latest_version else None
             })
-        
+
         return result
-        
+
     except DocumentPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -340,7 +339,8 @@ async def list_application_documents(
         )
 
 
-@router.get("/application/{application_id}/autofill", response_model=OCRAutoFillResponse)
+@router.get("/application/{application_id}/autofill",
+            response_model=OCRAutoFillResponse)
 async def get_autofill_suggestions(
     application_id: UUID,
     db: Session = Depends(get_db),
@@ -348,26 +348,26 @@ async def get_autofill_suggestions(
 ):
     """
     Get OCR auto-fill suggestions for application form.
-    
+
     Analyzes all uploaded documents with OCR results and suggests
     field values that can be auto-filled into the application form.
-    
+
     **Confidence Levels:**
     - High (>0.8): Highly confident, safe to auto-fill
     - Medium (0.5-0.8): Moderately confident, suggest to user
     - Low (<0.5): Low confidence, show but don't auto-fill
     """
     service = DocumentService(db)
-    
+
     try:
         suggestions = service.get_ocr_autofill_suggestions(
             application_id=application_id,
             user_id=UUID(current_user["sub"]),
             user_role=UserRole(current_user["role"])
         )
-        
+
         return suggestions
-        
+
     except DocumentPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -380,7 +380,8 @@ async def get_autofill_suggestions(
         )
 
 
-@router.get("/application/{application_id}/stats", response_model=DocumentStatsResponse)
+@router.get("/application/{application_id}/stats",
+            response_model=DocumentStatsResponse)
 async def get_document_stats(
     application_id: UUID,
     db: Session = Depends(get_db),
@@ -388,55 +389,58 @@ async def get_document_stats(
 ):
     """
     Get document statistics for an application.
-    
+
     Returns counts by status, OCR status, and missing mandatory documents.
     """
     service = DocumentService(db)
-    
+
     try:
         documents = service.get_application_documents(
             application_id=application_id,
             user_id=UUID(current_user["sub"]),
             user_role=UserRole(current_user["role"])
         )
-        
+
         # Calculate statistics
         total = len(documents)
-        
+
         by_status = {}
         for doc in documents:
             status_name = doc.status.value
             by_status[status_name] = by_status.get(status_name, 0) + 1
-        
+
         by_ocr_status = {}
         for doc in documents:
             ocr_status_name = doc.ocr_status.value
-            by_ocr_status[ocr_status_name] = by_ocr_status.get(ocr_status_name, 0) + 1
-        
+            by_ocr_status[ocr_status_name] = by_ocr_status.get(
+                ocr_status_name, 0) + 1
+
         # Get mandatory document types
-        from app.models import DocumentType, ApplicationStage
+        from app.models import DocumentType
         application = service.app_repo.get_by_id(application_id)
-        
+
         mandatory_types = db.query(DocumentType).filter(
-            DocumentType.is_mandatory == True,
+            DocumentType.is_mandatory,
             DocumentType.stage == application.current_stage
         ).all()
-        
+
         uploaded_type_ids = {doc.document_type_id for doc in documents}
         missing_mandatory = [
             doc_type.name
             for doc_type in mandatory_types
             if doc_type.id not in uploaded_type_ids
         ]
-        
+
         # Calculate completion percentage
         if mandatory_types:
             completion_percentage = int(
-                (len(mandatory_types) - len(missing_mandatory)) / len(mandatory_types) * 100
-            )
+                (len(mandatory_types) -
+                 len(missing_mandatory)) /
+                len(mandatory_types) *
+                100)
         else:
             completion_percentage = 100
-        
+
         return {
             "total_documents": total,
             "by_status": by_status,
@@ -444,7 +448,7 @@ async def get_document_stats(
             "missing_mandatory": missing_mandatory,
             "completion_percentage": completion_percentage
         }
-        
+
     except DocumentPermissionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

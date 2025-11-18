@@ -2,21 +2,24 @@
 Pydantic schemas for student profile management and application tracking.
 """
 from datetime import date, datetime
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field
 
+from pydantic import BaseModel, EmailStr, Field
 
 # ============================================================================
 # STUDENT PROFILE SCHEMAS
 # ============================================================================
 
+
 class StudentProfileCreateRequest(BaseModel):
     """Schema for agents creating a student profile with login credentials."""
     # User account credentials
-    email: EmailStr = Field(..., description="Student's email (will be login username)")
-    password: str = Field(..., min_length=8, description="Initial password for student login")
-    
+    email: EmailStr = Field(...,
+                            description="Student's email (will be login username)")
+    password: str = Field(..., min_length=8,
+                          description="Initial password for student login")
+
     # Student profile information
     given_name: str = Field(..., min_length=1, max_length=100)
     family_name: str = Field(..., min_length=1, max_length=100)
@@ -26,7 +29,7 @@ class StudentProfileCreateRequest(BaseModel):
     visa_type: Optional[str] = Field(None, max_length=50)
     phone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = None
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -71,7 +74,7 @@ class StudentProfileResponse(BaseModel):
     address: Optional[str] = None
     status: str  # UserStatus enum value
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -90,8 +93,9 @@ class ApplicationSummaryForStudent(BaseModel):
     completion_percentage: int = Field(..., ge=0, le=100)
     submitted_at: Optional[datetime] = None
     last_updated: datetime
-    assigned_staff_name: Optional[str] = None  # Name of staff member handling application
-    
+    # Name of staff member handling application
+    assigned_staff_name: Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -104,7 +108,7 @@ class RecentTimelineActivity(BaseModel):
     message: str
     created_at: datetime
     actor_name: Optional[str] = None  # Name of person who performed the action
-    
+
     class Config:
         from_attributes = True
 
@@ -157,35 +161,35 @@ class ApplicationTrackingDetailResponse(BaseModel):
     intake: str
     campus: str
     tuition_fee: float
-    
+
     # Current status
     current_stage: str  # ApplicationStage enum value
     completion_percentage: int = Field(..., ge=0, le=100)
     submitted_at: Optional[datetime] = None
     decision_at: Optional[datetime] = None
-    
+
     # Progress tracking
     stage_progress: List[StageProgressItem] = []
     required_documents: List[RequiredDocumentItem] = []
-    
+
     # Timeline history
     timeline: List[RecentTimelineActivity] = []
-    
+
     # Agent information (if applicable)
     agent_name: Optional[str] = None
     agent_agency: Optional[str] = None
     agent_phone: Optional[str] = None
-    
+
     # Assigned staff (if applicable)
     assigned_staff_name: Optional[str] = None
     assigned_staff_email: Optional[str] = None
-    
+
     # Next steps
     next_steps: List[str] = Field(
         default_factory=list,
         description="Action items for the student"
     )
-    
+
     class Config:
         from_attributes = True
 

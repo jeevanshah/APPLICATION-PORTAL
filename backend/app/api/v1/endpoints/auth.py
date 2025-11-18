@@ -1,21 +1,26 @@
 """
 Authentication endpoints: login, register, MFA setup, token refresh.
 """
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import get_current_user
 from app.core.security import (
-    verify_password, get_password_hash, create_access_token, create_refresh_token,
-    generate_mfa_secret, verify_totp_token, get_totp_provisioning_uri, decode_token
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    generate_mfa_secret,
+    get_password_hash,
+    get_totp_provisioning_uri,
+    verify_totp_token,
 )
 from app.db.database import get_db
-from app.models import UserAccount, UserRole, UserStatus, RtoProfile
-from app.api.dependencies import get_current_user
-from app.services.auth import AuthService, AuthenticationError, AuthorizationError
+from app.models import RtoProfile, UserAccount, UserRole, UserStatus
+from app.services.auth import AuthenticationError, AuthService
 
 router = APIRouter()
 
@@ -65,32 +70,35 @@ class TokenRefreshRequest(BaseModel):
 # ENDPOINTS
 # ============================================================================
 
-@router.post("/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=LoginResponse,
+             status_code=status.HTTP_201_CREATED)
 async def register(
     request: RegisterRequest,
     db: Session = Depends(get_db)
 ):
     """
     Register a new user account.
-    
+
     **Note**: In production, add email verification and captcha.
     """
     # Check if email already exists
-    existing_user = db.query(UserAccount).filter(UserAccount.email == request.email).first()
+    existing_user = db.query(UserAccount).filter(
+        UserAccount.email == request.email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
+
     # Validate RTO profile exists
-    rto = db.query(RtoProfile).filter(RtoProfile.id == request.rto_profile_id).first()
+    rto = db.query(RtoProfile).filter(
+        RtoProfile.id == request.rto_profile_id).first()
     if not rto:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid RTO profile ID"
         )
-    
+
     # Create user account
     hashed_password = get_password_hash(request.password)
     new_user = UserAccount(
@@ -100,11 +108,11 @@ async def register(
         rto_profile_id=request.rto_profile_id,
         status=UserStatus.ACTIVE
     )
-    
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
+
     # Create access and refresh tokens
     token_data = {
         "sub": str(new_user.id),
@@ -114,7 +122,7 @@ async def register(
     }
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token({"sub": str(new_user.id)})
-    
+
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -135,20 +143,20 @@ async def login(
     Returns JWT access and refresh tokens.
     """
     auth_service = AuthService(db)
-    
+
     try:
         # Authenticate and get token
         result = auth_service.login(
             email=form_data.username,
             password=form_data.password
         )
-        
+
         # Get user for additional info
         user = auth_service.get_current_user(UUID(result["user"]["id"]))
-        
+
         # Create refresh token (not in service yet, keep existing logic)
         refresh_token = create_refresh_token({"sub": result["user"]["id"]})
-        
+
         return LoginResponse(
             access_token=result["access_token"],
             refresh_token=refresh_token,
@@ -157,7 +165,7 @@ async def login(
             role=result["user"]["role"],
             mfa_required=user.mfa_enabled
         )
-    
+
     except AuthenticationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -175,22 +183,22 @@ async def refresh_token(
     Refresh access token using refresh token.
     """
     payload = decode_token(request.refresh_token)
-    
+
     if payload is None or payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token"
         )
-    
+
     user_id = payload.get("sub")
     user = db.query(UserAccount).filter(UserAccount.id == user_id).first()
-    
+
     if not user or user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive"
         )
-    
+
     # Create new tokens
     token_data = {
         "sub": str(user.id),
@@ -200,7 +208,7 @@ async def refresh_token(
     }
     new_access_token = create_access_token(token_data)
     new_refresh_token = create_refresh_token({"sub": str(user.id)})
-    
+
     return LoginResponse(
         access_token=new_access_token,
         refresh_token=new_refresh_token,
@@ -225,15 +233,15 @@ async def setup_mfa(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="MFA already enabled"
         )
-    
+
     # Generate new secret
     secret = generate_mfa_secret()
     current_user.mfa_secret = secret
     db.commit()
-    
+
     # Generate QR code URI for authenticator apps
     qr_uri = get_totp_provisioning_uri(secret, current_user.email)
-    
+
     return MfaSetupResponse(
         secret=secret,
         qr_code_uri=qr_uri
@@ -254,18 +262,18 @@ async def verify_mfa(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="MFA not set up. Call /mfa/setup first"
         )
-    
+
     # Verify TOTP token
     if not verify_totp_token(current_user.mfa_secret, request.token):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid MFA token"
         )
-    
+
     # Enable MFA
     current_user.mfa_enabled = True
     db.commit()
-    
+
     return {"message": "MFA enabled successfully"}
 
 
@@ -283,24 +291,25 @@ async def disable_mfa(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="MFA not enabled"
         )
-    
+
     # Verify TOTP token before disabling
     if not verify_totp_token(current_user.mfa_secret, request.token):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid MFA token"
         )
-    
+
     # Disable MFA
     current_user.mfa_enabled = False
     current_user.mfa_secret = None
     db.commit()
-    
+
     return {"message": "MFA disabled successfully"}
 
 
 @router.get("/me")
-async def get_current_user_info(current_user: UserAccount = Depends(get_current_user)):
+async def get_current_user_info(
+        current_user: UserAccount = Depends(get_current_user)):
     """
     Get current authenticated user information.
     """

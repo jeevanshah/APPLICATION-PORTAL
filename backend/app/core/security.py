@@ -3,9 +3,10 @@ Security utilities: password hashing, JWT tokens, MFA.
 """
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
+
 import bcrypt
 import pyotp
+from jose import JWTError, jwt
 
 from app.core.config import settings
 
@@ -28,58 +29,68 @@ def get_password_hash(password: str) -> str:
     return hashed.decode('utf-8')
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+        data: dict,
+        expires_delta: Optional[timedelta] = None) -> str:
     """
     Create JWT access token.
-    
+
     Args:
         data: Payload data (include user_id, email, role, rto_profile_id)
         expires_delta: Optional custom expiration time
-    
+
     Returns:
         Encoded JWT token string
     """
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 
 def create_refresh_token(data: dict) -> str:
     """
     Create JWT refresh token (longer expiration).
-    
+
     Args:
         data: Payload data (minimal: user_id only)
-    
+
     Returns:
         Encoded JWT refresh token string
     """
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 
 def decode_token(token: str) -> Optional[dict]:
     """
     Decode and verify JWT token.
-    
+
     Args:
         token: JWT token string
-    
+
     Returns:
         Decoded payload dict or None if invalid
     """
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[
+                settings.ALGORITHM])
         return payload
     except JWTError:
         return None
@@ -93,11 +104,11 @@ def generate_mfa_secret() -> str:
 def verify_totp_token(secret: str, token: str) -> bool:
     """
     Verify TOTP token against secret.
-    
+
     Args:
         secret: Base32 encoded secret
         token: 6-digit TOTP code
-    
+
     Returns:
         True if valid, False otherwise
     """
@@ -108,11 +119,11 @@ def verify_totp_token(secret: str, token: str) -> bool:
 def get_totp_provisioning_uri(secret: str, email: str) -> str:
     """
     Get TOTP provisioning URI for QR code generation.
-    
+
     Args:
         secret: Base32 encoded secret
         email: User email
-    
+
     Returns:
         otpauth:// URI string
     """

@@ -2,16 +2,17 @@
 Pydantic schemas for JSONB fields in Application Portal.
 These nested models provide type safety and validation for flexible JSONB data.
 """
-from datetime import datetime, date
-from typing import Optional, List
+from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import List, Optional
 from uuid import UUID
 
+from pydantic import BaseModel, EmailStr, Field
 
 # ============================================================================
 # JSONB NESTED SCHEMAS (for APPLICATION table)
 # ============================================================================
+
 
 class EmergencyContactSchema(BaseModel):
     """Emergency contact information (stored in APPLICATION.emergency_contacts array)."""
@@ -28,7 +29,8 @@ class HealthCoverPolicySchema(BaseModel):
     policy_number: str = Field(..., min_length=1, max_length=100)
     start_date: date
     end_date: date
-    coverage_type: str = Field(..., min_length=1, max_length=100)  # e.g., "Basic", "Comprehensive"
+    # e.g., "Basic", "Comprehensive"
+    coverage_type: str = Field(..., min_length=1, max_length=100)
 
 
 class DisabilitySupportSchema(BaseModel):
@@ -36,7 +38,8 @@ class DisabilitySupportSchema(BaseModel):
     has_disability: bool
     disability_details: Optional[str] = None
     support_required: Optional[str] = None
-    documentation_status: Optional[str] = Field(None, max_length=50)  # e.g., "verified", "pending"
+    documentation_status: Optional[str] = Field(
+        None, max_length=50)  # e.g., "verified", "pending"
 
 
 class LanguageCulturalDataSchema(BaseModel):
@@ -45,7 +48,8 @@ class LanguageCulturalDataSchema(BaseModel):
     other_languages: List[str] = Field(default_factory=list)
     indigenous_status: Optional[str] = Field(None, max_length=100)
     country_of_birth: str = Field(..., min_length=1, max_length=100)
-    citizenship_status: str = Field(..., min_length=1, max_length=100)  # e.g., "International Student", "PR", "Citizen"
+    # e.g., "International Student", "PR", "Citizen"
+    citizenship_status: str = Field(..., min_length=1, max_length=100)
 
 
 class SurveyResponseSchema(BaseModel):
@@ -83,7 +87,8 @@ class GsAssessmentSchema(BaseModel):
 
 class SignaturePartySchema(BaseModel):
     """Signature party information for e-signature envelope."""
-    role: str = Field(..., max_length=50)  # e.g., "student", "agent", "guardian"
+    role: str = Field(...,
+                      max_length=50)  # e.g., "student", "agent", "guardian"
     name: str = Field(..., min_length=1, max_length=255)
     email: EmailStr
     signed_at: Optional[datetime] = None
@@ -93,7 +98,8 @@ class SignatureDataSchema(BaseModel):
     """E-signature envelope data (stored in APPLICATION.signature_data)."""
     envelope_id: str = Field(..., min_length=1, max_length=255)
     provider: str = Field(..., max_length=50)  # e.g., "DocuSeal", "DocuSign"
-    status: str = Field(..., pattern="^(draft|sent|completed|declined|voided)$")
+    status: str = Field(...,
+                        pattern="^(draft|sent|completed|declined|voided)$")
     cost_cents: int = Field(..., ge=0)
     expires_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -142,9 +148,12 @@ class InAppNotificationPrefsSchema(BaseModel):
 
 class NotificationPreferencesSchema(BaseModel):
     """User notification preferences (stored in USER_ACCOUNT.notification_preferences)."""
-    email: EmailNotificationPrefsSchema = Field(default_factory=EmailNotificationPrefsSchema)
-    sms: SmsNotificationPrefsSchema = Field(default_factory=SmsNotificationPrefsSchema)
-    in_app: InAppNotificationPrefsSchema = Field(default_factory=InAppNotificationPrefsSchema)
+    email: EmailNotificationPrefsSchema = Field(
+        default_factory=EmailNotificationPrefsSchema)
+    sms: SmsNotificationPrefsSchema = Field(
+        default_factory=SmsNotificationPrefsSchema)
+    in_app: InAppNotificationPrefsSchema = Field(
+        default_factory=InAppNotificationPrefsSchema)
 
 
 class WorkflowSlaConfigSchema(BaseModel):
@@ -155,8 +164,10 @@ class WorkflowSlaConfigSchema(BaseModel):
 
 class AdminConfigSchema(BaseModel):
     """Staff admin configuration (stored in USER_ACCOUNT.admin_config)."""
-    workflow_sla: Optional[dict[str, WorkflowSlaConfigSchema]] = None  # Key: stage name
-    default_templates: Optional[dict[str, str]] = None  # Key: template type, Value: blob URL
+    workflow_sla: Optional[dict[str,
+                                WorkflowSlaConfigSchema]] = None  # Key: stage name
+    # Key: template type, Value: blob URL
+    default_templates: Optional[dict[str, str]] = None
     auto_assign_enabled: bool = False
     signature_authority: bool = False
 
@@ -212,4 +223,5 @@ class BusinessSettingsSchema(BaseModel):
     sla_overrides: Optional[dict[str, WorkflowSlaConfigSchema]] = None
     features_enabled: Optional[dict[str, bool]] = Field(default_factory=dict)
     time_zone: str = Field("Australia/Sydney", max_length=50)
-    business_hours: Optional[dict] = None  # {monday: {open: "09:00", close: "17:00"}, ...}
+    # {monday: {open: "09:00", close: "17:00"}, ...}
+    business_hours: Optional[dict] = None

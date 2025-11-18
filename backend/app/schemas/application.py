@@ -1,17 +1,18 @@
 """
 Application schemas with JSONB field validation and draft/resume support.
 """
-from datetime import datetime, date
-from typing import Optional, List
+from datetime import date, datetime
+from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator
 
-from app.models import ApplicationStage, UserRole
+from pydantic import BaseModel, Field
 
+from app.models import ApplicationStage
 
 # ============================================================================
 # JSONB SUB-SCHEMAS (for nested data validation)
 # ============================================================================
+
 
 class EmergencyContact(BaseModel):
     """Emergency contact person."""
@@ -119,7 +120,7 @@ class ApplicationCreateRequest(BaseModel):
     """Create new application (draft)."""
     course_offering_id: UUID
     agent_profile_id: Optional[UUID] = None
-    
+
     # Optional: pre-fill with student profile data if available
     student_profile_id: Optional[UUID] = None
 
@@ -128,7 +129,7 @@ class ApplicationUpdateRequest(BaseModel):
     """Update application (auto-save or manual save)."""
     # All fields optional for partial updates
     usi: Optional[str] = None
-    
+
     # JSONB fields (partial updates supported)
     enrollment_data: Optional[EnrollmentData] = None
     emergency_contacts: Optional[List[EmergencyContact]] = None
@@ -145,7 +146,8 @@ class ApplicationUpdateRequest(BaseModel):
 class ApplicationSubmitRequest(BaseModel):
     """Submit application for review (validates all required fields)."""
     # Require critical fields before submission
-    confirm_accuracy: bool = Field(..., description="User confirms all information is accurate")
+    confirm_accuracy: bool = Field(...,
+                                   description="User confirms all information is accurate")
 
 
 class ApplicationAssignRequest(BaseModel):
@@ -173,16 +175,16 @@ class ApplicationSummary(BaseModel):
     submitted_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
-    
+
     # Computed fields
     student_name: Optional[str] = None  # From joined student_profile
     course_name: Optional[str] = None  # From joined course_offering
     agent_name: Optional[str] = None  # From joined agent_profile
     assigned_staff_name: Optional[str] = None
-    
+
     # Progress indicator
     completion_percentage: Optional[int] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -194,17 +196,17 @@ class ApplicationDetail(BaseModel):
     agent_profile_id: Optional[UUID]
     course_offering_id: UUID
     assigned_staff_id: Optional[UUID]
-    
+
     # Workflow
     current_stage: ApplicationStage
     submitted_at: Optional[datetime]
     decision_at: Optional[datetime]
-    
+
     # USI
     usi: Optional[str]
     usi_verified: bool
     usi_verified_at: Optional[datetime]
-    
+
     # JSONB fields
     enrollment_data: Optional[EnrollmentData]
     emergency_contacts: Optional[List[EmergencyContact]]
@@ -216,11 +218,11 @@ class ApplicationDetail(BaseModel):
     gs_assessment: Optional[GSAssessment]
     signature_data: Optional[SignatureData]
     form_metadata: Optional[FormMetadata]
-    
+
     # Timestamps
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 

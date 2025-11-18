@@ -3,14 +3,14 @@ Schemas for the 12-step application form.
 Each step has its own request/response schema.
 """
 from datetime import date, datetime
-from typing import Optional, List
-from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import List, Optional
 
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ============================================================================
 # STEP 1: PERSONAL DETAILS
 # ============================================================================
+
 
 class PersonalDetailsRequest(BaseModel):
     """Step 1: Personal details update."""
@@ -18,23 +18,24 @@ class PersonalDetailsRequest(BaseModel):
     middle_name: Optional[str] = Field(None, max_length=100)
     family_name: str = Field(..., min_length=1, max_length=100)
     date_of_birth: date
-    gender: str = Field(..., description="Male, Female, Other, Prefer not to say")
+    gender: str = Field(...,
+                        description="Male, Female, Other, Prefer not to say")
     email: EmailStr
     phone: str = Field(..., min_length=5, max_length=50)
-    
+
     # Address
     street_address: str
     suburb: str
     state: str
     postcode: str
     country: str = "Australia"
-    
+
     # Identity
     passport_number: Optional[str] = Field(None, max_length=50)
     passport_expiry: Optional[date] = None
     nationality: str
     country_of_birth: str
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -75,7 +76,7 @@ class EmergencyContactItem(BaseModel):
 class EmergencyContactRequest(BaseModel):
     """Step 2: Emergency contacts (must have at least one)."""
     contacts: List[EmergencyContactItem] = Field(..., min_items=1, max_items=5)
-    
+
     @field_validator('contacts')
     @classmethod
     def validate_primary_contact(cls, contacts):
@@ -91,13 +92,14 @@ class EmergencyContactRequest(BaseModel):
 
 class HealthCoverRequest(BaseModel):
     """Step 3: Overseas Student Health Cover."""
-    provider: str = Field(..., description="OSHC provider name (e.g., Bupa, Medibank)")
+    provider: str = Field(...,
+                          description="OSHC provider name (e.g., Bupa, Medibank)")
     policy_number: str
     start_date: date
     end_date: date
     coverage_type: str = Field(..., description="Single, Family, Couple")
     cost: Optional[float] = Field(None, ge=0)
-    
+
     @field_validator('end_date')
     @classmethod
     def validate_dates(cls, end_date, info):
@@ -114,18 +116,22 @@ class HealthCoverRequest(BaseModel):
 class LanguageCulturalRequest(BaseModel):
     """Step 4: Language and cultural background."""
     first_language: str
-    english_proficiency: str = Field(..., description="Native, Advanced, Intermediate, Basic")
+    english_proficiency: str = Field(...,
+                                     description="Native, Advanced, Intermediate, Basic")
     other_languages: Optional[List[str]] = None
-    
+
     # Cultural background
-    indigenous_status: Optional[str] = Field(None, description="Aboriginal, Torres Strait Islander, Both, Neither")
+    indigenous_status: Optional[str] = Field(
+        None, description="Aboriginal, Torres Strait Islander, Both, Neither")
     country_of_birth: str
-    citizenship_status: str = Field(..., description="Citizen, Permanent Resident, Temporary Visa")
+    citizenship_status: str = Field(...,
+                                    description="Citizen, Permanent Resident, Temporary Visa")
     visa_type: Optional[str] = None
     visa_expiry: Optional[date] = None
-    
+
     # English test (if applicable)
-    english_test_type: Optional[str] = Field(None, description="IELTS, TOEFL, PTE, None")
+    english_test_type: Optional[str] = Field(
+        None, description="IELTS, TOEFL, PTE, None")
     english_test_score: Optional[str] = None
     english_test_date: Optional[date] = None
 
@@ -141,7 +147,8 @@ class DisabilitySupportRequest(BaseModel):
     disability_details: Optional[str] = None
     support_required: Optional[str] = None
     has_documentation: bool = False
-    documentation_status: Optional[str] = Field(None, description="Pending upload, Uploaded, Verified")
+    documentation_status: Optional[str] = Field(
+        None, description="Pending upload, Uploaded, Verified")
     adjustments_needed: Optional[List[str]] = None
 
 
@@ -153,7 +160,8 @@ class SchoolingHistoryItem(BaseModel):
     """Single schooling/education entry."""
     institution: str
     country: str
-    qualification_level: str = Field(..., description="High School, Diploma, Bachelor, Master, etc.")
+    qualification_level: str = Field(...,
+                                     description="High School, Diploma, Bachelor, Master, etc.")
     start_year: int = Field(..., ge=1950, le=2030)
     end_year: Optional[int] = Field(None, ge=1950, le=2030)
     currently_attending: bool = False
@@ -182,7 +190,8 @@ class QualificationItem(BaseModel):
 
 class PreviousQualificationsRequest(BaseModel):
     """Step 7: Professional qualifications and certifications."""
-    qualifications: List[QualificationItem] = Field(default_factory=list, max_items=10)
+    qualifications: List[QualificationItem] = Field(
+        default_factory=list, max_items=10)
 
 
 # ============================================================================
@@ -202,7 +211,8 @@ class EmploymentHistoryItem(BaseModel):
 
 class EmploymentHistoryRequest(BaseModel):
     """Step 8: Work experience."""
-    entries: List[EmploymentHistoryItem] = Field(default_factory=list, max_items=15)
+    entries: List[EmploymentHistoryItem] = Field(
+        default_factory=list, max_items=15)
 
 
 # ============================================================================
@@ -211,9 +221,11 @@ class EmploymentHistoryRequest(BaseModel):
 
 class USIRequest(BaseModel):
     """Step 9: USI details."""
-    usi: str = Field(..., min_length=10, max_length=10, pattern=r'^[A-Z0-9]{10}$')
-    consent_to_verify: bool = Field(..., description="Student consents to USI verification")
-    
+    usi: str = Field(..., min_length=10, max_length=10,
+                     pattern=r'^[A-Z0-9]{10}$')
+    consent_to_verify: bool = Field(...,
+                                    description="Student consents to USI verification")
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -251,7 +263,8 @@ class SurveyQuestionResponse(BaseModel):
     question_id: str
     question_text: str
     answer: str
-    answer_type: str = Field(..., description="text, single_choice, multiple_choice, rating")
+    answer_type: str = Field(...,
+                             description="text, single_choice, multiple_choice, rating")
 
 
 class SurveyRequest(BaseModel):
