@@ -29,7 +29,7 @@ from app.services.document import (
 )
 
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter()
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)

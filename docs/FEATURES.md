@@ -4,7 +4,7 @@ Complete overview of implemented features in the Churchill Application Portal.
 
 ---
 
-## 🎯 Current Status: Phase 3 Complete
+## 🎯 Current Status: Phase 6 Complete (Staff Workflow)
 
 **Live Features:**
 - ✅ Authentication & Multi-tenancy
@@ -12,9 +12,11 @@ Complete overview of implemented features in the Churchill Application Portal.
 - ✅ Document Upload with OCR
 - ✅ Permission-based Access Control
 - ✅ Auto-fill from Documents
+- ✅ **Staff Workflow (NEW)**
+- ✅ **Offer Letter Generation (NEW)**
 
-**In Progress:**
-- 🚧 Automated Testing Suite
+**Next Steps:**
+- 🚧 Automated Testing Suite (Document & Staff Workflow)
 - 🚧 Frontend React Application
 
 ---
@@ -403,6 +405,220 @@ backend/
 - ✅ Document upload with mock OCR
 - ✅ Auto-fill suggestions generated
 - ✅ Permission checks working
+- ✅ **Staff workflow endpoints (NEW)**
+- ✅ **Document verification (NEW)**
+- ✅ **Offer letter generation (NEW)**
+
+---
+
+## Phase 6: Staff Workflow (Complete ✅)
+
+### Overview
+Complete staff workflow system enabling staff members to review applications, verify documents, manage workflow stages, conduct GS assessments, and generate offer letters.
+
+### Staff Dashboard
+- **Metrics API** - Workload statistics for staff members
+  - Applications by stage (SUBMITTED, STAFF_REVIEW, etc.)
+  - Documents pending verification count
+  - Enrolled/Rejected counts
+- **Pending Queue** - Filterable list of applications awaiting review
+  - Filter by stage, assignment status
+  - Pagination support (up to 100 results)
+  - Shows student, course, agent info
+  - Days pending (SLA tracking)
+  - Document verification status
+
+### Document Verification
+- **Verify/Reject Documents** - Staff can approve or reject uploaded documents
+  - Add verification notes
+  - Creates timeline entry for audit trail
+  - Sends notifications (future)
+- **Pending Documents View** - List all documents awaiting verification
+  - Filter by application or document type
+  - Shows OCR status and version count
+
+### Application Review
+- **Complete Application View** - All 12 form steps, documents, timeline
+  - Student profile and contact details
+  - Course information
+  - All JSONB fields (emergency contacts, health cover, etc.)
+  - Schooling, qualification, employment history
+  - Document list with verification status
+  - Full activity timeline with comments
+- **Staff Comments** - Add internal or external notes
+  - `is_internal` flag for staff-only comments
+  - Visible in application timeline
+- **Assign Applications** - Assign to specific staff member for review
+
+### Workflow Stage Management
+- **Stage Transitions** - Move applications through workflow
+  - Validates allowed transitions
+  - Creates stage history record
+  - Updates timeline
+  - Sets decision timestamp for terminal stages
+- **Allowed Transitions:**
+  - SUBMITTED → STAFF_REVIEW, AWAITING_DOCUMENTS, REJECTED
+  - STAFF_REVIEW → AWAITING_DOCUMENTS, GS_ASSESSMENT, OFFER_GENERATED, REJECTED
+  - AWAITING_DOCUMENTS → STAFF_REVIEW, REJECTED
+  - GS_ASSESSMENT → STAFF_REVIEW, REJECTED
+  - OFFER_GENERATED → OFFER_ACCEPTED, WITHDRAWN
+  - OFFER_ACCEPTED → ENROLLED
+
+### Application Actions
+- **Request Additional Documents**
+  - Specify document types needed
+  - Add message for student/agent
+  - Set due date
+  - Transitions to AWAITING_DOCUMENTS stage
+  - Stores request in `document.gs_document_requests` JSONB
+- **Approve Application**
+  - Requires all mandatory documents VERIFIED
+  - Add offer details (start date, fees, conditions)
+  - Transitions to OFFER_GENERATED stage
+  - Updates `enrollment_data` JSONB field
+  - Sets `decision_at` timestamp
+- **Reject Application**
+  - Provide rejection reason
+  - Mark as appealable or not
+  - Transitions to REJECTED stage
+  - Updates `enrollment_data` with rejection details
+
+### GS Assessment
+- **Record GS Assessment** - Genuine Student assessment for international students
+  - Interview date and time
+  - Scorecard with criteria scores
+  - Decision: pass, fail, or pending
+  - Assessment notes
+  - **Workflow:**
+    - Pass → Returns to STAFF_REVIEW for final approval
+    - Fail → Transitions to REJECTED
+    - Pending → Remains in GS_ASSESSMENT stage
+  - Stores in `application.gs_assessment` JSONB field
+
+### Offer Letter Generation
+- **PDF Generation** using ReportLab
+  - Professional offer letter template
+  - RTO branding (name, logo, CRICOS code)
+  - Student details
+  - Course information (name, code, intake, campus, start date)
+  - Fee breakdown (tuition + materials)
+  - Offer conditions (customizable list)
+  - Acceptance signature section
+- **Customization**
+  - Override course fees
+  - Add material fees
+  - Custom conditions list
+  - Multiple templates (future)
+- **Storage**
+  - Saves to `uploads/offer_letters/` directory
+  - Filename: `offer_letter_{StudentName}_{Timestamp}.pdf`
+  - Path stored in `enrollment_data.offer_letter_pdf`
+- **Requirements**
+  - Application must be in OFFER_GENERATED stage
+
+### API Endpoints (Staff Workflow)
+```
+GET    /api/v1/staff/metrics                                  - Dashboard metrics
+GET    /api/v1/staff/metrics/all                              - Org-wide metrics
+GET    /api/v1/staff/applications/pending                     - Pending queue
+GET    /api/v1/staff/applications/{id}                        - Application detail
+GET    /api/v1/staff/documents/pending                        - Documents to verify
+
+PATCH  /api/v1/staff/documents/{id}/verify                    - Verify/reject document
+PATCH  /api/v1/staff/applications/{id}/assign                 - Assign to staff
+PATCH  /api/v1/staff/applications/{id}/transition             - Change stage
+
+POST   /api/v1/staff/applications/{id}/comments               - Add comment
+POST   /api/v1/staff/applications/{id}/request-documents      - Request docs
+POST   /api/v1/staff/applications/{id}/approve                - Approve application
+POST   /api/v1/staff/applications/{id}/reject                 - Reject application
+POST   /api/v1/staff/applications/{id}/gs-assessment          - Record GS assessment
+POST   /api/v1/staff/applications/{id}/generate-offer-letter  - Generate PDF
+```
+
+### Repository Layer (`repositories/staff.py`)
+- **348 lines** of repository code
+- Query methods:
+  - `get_pending_applications()` - Eager loads student, course, agent, documents
+  - `get_pending_count()` - Count for metrics
+  - `get_application_with_details()` - Loads all relationships
+  - `get_documents_pending_verification()` - Filtered document queries
+  - `verify_document()` - Update status + timeline
+  - `assign_application()` - Assignment logic
+  - `transition_application_stage()` - Stage transitions with history
+  - `add_staff_comment()` - Timeline comments
+  - `get_staff_metrics()` - Dashboard statistics
+
+### Service Layer (`services/staff.py`)
+- **535 lines** of business logic
+- Services:
+  - `get_dashboard_metrics()` - Maps to StaffMetrics DTO
+  - `get_pending_applications()` - Returns PendingApplicationsResponse
+  - `get_application_detail()` - Returns ApplicationDetailForReview
+  - `verify_document()` - Document verification workflow
+  - `transition_stage()` - Validates transitions + executes
+  - `approve_application()` - Validates docs + approves
+  - `reject_application()` - Rejection workflow
+  - `request_additional_documents()` - Document request workflow
+  - `record_gs_assessment()` - GS assessment logic
+  - `_validate_stage_transition()` - Business rule validation
+
+### Offer Letter Service (`services/offer_letter.py`)
+- **283 lines** of PDF generation code
+- Uses ReportLab library
+- Features:
+  - A4 page format with professional styling
+  - Custom fonts and colors (Churchill blue: #003366)
+  - RTO header with branding
+  - Fee breakdown table
+  - Conditions list
+  - Student acceptance signature section
+  - Configurable output directory
+
+### API Layer (`api/v1/endpoints/staff.py`)
+- **581 lines** of endpoint code
+- **15 endpoints** for complete staff workflow
+- Dependency injection:
+  - `require_staff_role()` - Role verification
+  - `get_staff_profile()` - Get current staff
+- Comprehensive documentation in OpenAPI/Swagger
+- Proper error handling (404, 400, 403, 500)
+
+### Schemas (`schemas/staff.py`)
+- **267 lines** of Pydantic models
+- **27 schemas** for requests and responses:
+  - Dashboard: `StaffMetrics`, `PendingApplicationsResponse`
+  - Details: `ApplicationDetailForReview`, `DocumentSummaryForStaff`
+  - Requests: `VerifyDocumentRequest`, `TransitionStageRequest`, etc.
+  - Responses: `DocumentVerificationResponse`, `ApplicationActionResponse`
+- Full validation with Field constraints
+- ConfigDict for ORM mode
+
+### Code Statistics (Phase 6)
+- **Staff Repository:** 348 lines
+- **Staff Service:** 535 lines
+- **Staff Schemas:** 267 lines
+- **Staff Endpoints:** 581 lines
+- **Offer Letter Service:** 283 lines
+- **Total Phase 6 Code:** ~2,014 lines
+
+**Total Project Code:** 7,200+ lines (backend only)
+
+### Permissions & Security
+- All staff endpoints require STAFF or ADMIN role
+- JWT token validation on every request
+- Staff profile lookup for current user
+- Permission checks before sensitive operations
+- Audit trail via timeline entries
+
+### Future Enhancements
+- Email notifications for document requests/rejections
+- SMS notifications for critical updates
+- Advanced offer letter templates
+- Bulk approval/rejection
+- Staff performance metrics
+- SLA tracking and alerts
+- Automated workflow triggers
 
 ---
 

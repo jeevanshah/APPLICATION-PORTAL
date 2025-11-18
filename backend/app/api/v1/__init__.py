@@ -4,7 +4,7 @@ API v1 router aggregator.
 from fastapi import APIRouter
 
 # Import routers
-from app.api.v1.endpoints import auth, applications, students, application_steps, documents
+from app.api.v1.endpoints import auth, applications, students, application_steps, documents, staff
 
 api_router = APIRouter()
 
@@ -13,7 +13,8 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
 api_router.include_router(application_steps.router, prefix="/applications", tags=["Application Steps"])
 api_router.include_router(students.router, prefix="/students", tags=["Students"])
-api_router.include_router(documents.router, tags=["Documents"])
+api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
+api_router.include_router(staff.router, prefix="/staff", tags=["Staff Workflow"])
 
 # TODO: Add more routers as they're implemented
 # api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])

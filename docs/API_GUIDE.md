@@ -13,9 +13,10 @@ Complete API reference for frontend integration and testing.
 2. [Application Lifecycle](#application-lifecycle)
 3. [12-Step Form Endpoints](#12-step-form-endpoints)
 4. [Document Upload & OCR](#document-upload--ocr)
-5. [Testing with Postman](#testing-with-postman)
-6. [Frontend Integration Examples](#frontend-integration-examples)
-7. [Error Handling](#error-handling)
+5. [Staff Workflow](#staff-workflow) **← NEW**
+6. [Testing with Postman](#testing-with-postman)
+7. [Frontend Integration Examples](#frontend-integration-examples)
+8. [Error Handling](#error-handling)
 
 ---
 
@@ -484,6 +485,269 @@ process_ocr: true
   ]
 }
 ```
+
+---
+
+## Staff Workflow
+
+**Permissions Required:** STAFF or ADMIN role
+
+The staff workflow endpoints enable staff members to review applications, verify documents, manage application stages, and generate offer letters.
+
+### Staff Dashboard Metrics
+
+**Endpoint:** `GET /staff/metrics`
+
+Get workload metrics for current staff member.
+
+**Response (200 OK):**
+```json
+{
+  "total_applications": 45,
+  "submitted_pending_review": 8,
+  "in_staff_review": 12,
+  "awaiting_documents": 5,
+  "in_gs_assessment": 3,
+  "offers_generated": 10,
+  "enrolled": 5,
+  "rejected": 2,
+  "documents_pending_verification": 15
+}
+```
+
+### Get Pending Applications
+
+**Endpoint:** `GET /staff/applications/pending`
+
+**Query Parameters:**
+- `stage` (optional): Filter by specific ApplicationStage
+- `assigned_to_me` (boolean): Show only my assigned applications
+- `skip` (int): Pagination offset (default: 0)
+- `limit` (int): Max results (default: 50, max: 100)
+
+**Response (200 OK):**
+```json
+{
+  "total": 25,
+  "applications": [
+    {
+      "id": "app-uuid",
+      "student": {
+        "id": "student-uuid",
+        "given_name": "John",
+        "family_name": "Smith",
+        "email": "john@example.com",
+        "nationality": "India"
+      },
+      "course": {
+        "id": "course-uuid",
+        "course_code": "BIT101",
+        "course_name": "Bachelor of Information Technology",
+        "intake": "2025 Semester 1",
+        "campus": "Sydney"
+      },
+      "agent": {
+        "id": "agent-uuid",
+        "agency_name": "Global Education Partners",
+        "email": "agent@agency.com"
+      },
+      "current_stage": "SUBMITTED",
+      "submitted_at": "2025-11-15T10:30:00Z",
+      "days_pending": 3,
+      "document_count": 8,
+      "documents_verified": 5,
+      "documents_pending": 3,
+      "assigned_staff_email": null
+    }
+  ],
+  "skip": 0,
+  "limit": 50
+}
+```
+
+### Get Application Detail for Review
+
+**Endpoint:** `GET /staff/applications/{application_id}`
+
+Returns complete application with all 12 form steps, documents, and timeline.
+
+**Response:** Complete `ApplicationDetailForReview` object with all JSONB fields, history, documents, and timeline.
+
+### Verify Document
+
+**Endpoint:** `PATCH /staff/documents/{document_id}/verify`
+
+**Request:**
+```json
+{
+  "status": "VERIFIED",
+  "notes": "Passport verified - matches student details"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "document_id": "doc-uuid",
+  "status": "VERIFIED",
+  "verified_at": "2025-11-18T14:20:00Z",
+  "message": "Document Passport successfully verified"
+}
+```
+
+### Assign Application to Staff
+
+**Endpoint:** `PATCH /staff/applications/{application_id}/assign`
+
+**Request:**
+```json
+{
+  "staff_id": "staff-uuid"
+}
+```
+
+### Transition Application Stage
+
+**Endpoint:** `PATCH /staff/applications/{application_id}/transition`
+
+**Request:**
+```json
+{
+  "to_stage": "STAFF_REVIEW",
+  "notes": "All documents received, moving to review"
+}
+```
+
+**Valid Stage Transitions:**
+- `SUBMITTED` → `STAFF_REVIEW`, `AWAITING_DOCUMENTS`, `REJECTED`
+- `STAFF_REVIEW` → `AWAITING_DOCUMENTS`, `GS_ASSESSMENT`, `OFFER_GENERATED`, `REJECTED`
+- `AWAITING_DOCUMENTS` → `STAFF_REVIEW`, `REJECTED`
+- `GS_ASSESSMENT` → `STAFF_REVIEW`, `REJECTED`
+- `OFFER_GENERATED` → `OFFER_ACCEPTED`, `WITHDRAWN`
+- `OFFER_ACCEPTED` → `ENROLLED`
+
+### Add Staff Comment
+
+**Endpoint:** `POST /staff/applications/{application_id}/comments`
+
+**Request:**
+```json
+{
+  "comment": "Student provided additional evidence of English proficiency",
+  "is_internal": false
+}
+```
+
+### Request Additional Documents
+
+**Endpoint:** `POST /staff/applications/{application_id}/request-documents`
+
+**Request:**
+```json
+{
+  "document_type_codes": ["TRANSCRIPT", "ENGLISH_TEST"],
+  "message": "Please provide certified copies of your academic transcripts and IELTS results",
+  "due_date": "2025-11-30"
+}
+```
+
+### Approve Application
+
+**Endpoint:** `POST /staff/applications/{application_id}/approve`
+
+**Request:**
+```json
+{
+  "offer_details": {
+    "course_start_date": "2025-02-15",
+    "tuition_fee": 25000.00,
+    "material_fee": 500.00,
+    "conditions": [
+      "Payment of tuition fees as per payment plan",
+      "Valid student visa",
+      "OSHC for course duration"
+    ]
+  },
+  "notes": "Application approved - all criteria met"
+}
+```
+
+**Validation:** All mandatory documents must be VERIFIED
+
+**Actions:**
+- Updates `enrollment_data` with offer details
+- Transitions to `OFFER_GENERATED` stage
+- Sets `decision_at` timestamp
+- Creates timeline entry
+
+### Reject Application
+
+**Endpoint:** `POST /staff/applications/{application_id}/reject`
+
+**Request:**
+```json
+{
+  "rejection_reason": "Academic qualifications do not meet course entry requirements",
+  "is_appealable": true
+}
+```
+
+### Record GS Assessment
+
+**Endpoint:** `POST /staff/applications/{application_id}/gs-assessment`
+
+**Request:**
+```json
+{
+  "interview_date": "2025-11-20T10:00:00Z",
+  "decision": "pass",
+  "scorecard": {
+    "study_intentions": 8,
+    "financial_capacity": 9,
+    "english_proficiency": 7,
+    "ties_to_home_country": 8,
+    "overall_score": 32
+  },
+  "notes": "Student demonstrated clear study intentions and adequate financial support"
+}
+```
+
+**Workflow:**
+- `"pass"` → Returns to `STAFF_REVIEW` for final approval
+- `"fail"` → Transitions to `REJECTED`
+- `"pending"` → Remains in `GS_ASSESSMENT` stage
+
+### Generate Offer Letter PDF
+
+**Endpoint:** `POST /staff/applications/{application_id}/generate-offer-letter`
+
+**Request:**
+```json
+{
+  "course_start_date": "2025-02-15",
+  "tuition_fee": 25000.00,
+  "material_fee": 500.00,
+  "conditions": [
+    "Payment of tuition fees as per payment plan",
+    "Provision of certified academic documents",
+    "Valid student visa",
+    "OSHC for course duration"
+  ],
+  "template": "standard"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "application_id": "app-uuid",
+  "offer_letter_url": "uploads/offer_letters/offer_letter_John_Smith_20251118_142030.pdf",
+  "generated_at": "2025-11-18T14:20:30Z",
+  "expires_at": null
+}
+```
+
+**Requirements:** Application must be in `OFFER_GENERATED` stage
 
 ---
 
