@@ -1,0 +1,210 @@
+{% extends "admin/base.html" %}
+
+{% block title %}RTO Profiles - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>RTO Profiles</h2>
+    <p>Manage registered training organizations</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="btn-group">
+    <button class="btn btn-primary" onclick="openModal('rtoModal')">+ Add RTO Profile</button>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>CRICOS Code</th>
+                <th>Contact Email</th>
+                <th>Contact Phone</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="rtoTableBody">
+            <tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add/Edit RTO Modal -->
+<div class="modal" id="rtoModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="rtoModalTitle">Add RTO Profile</h3>
+        </div>
+        <form id="rtoForm" onsubmit="handleRtoSubmit(event)">
+            <input type="hidden" id="rtoId">
+            
+            <div class="form-group">
+                <label for="rtoName">Organization Name *</label>
+                <input type="text" id="rtoName" required>
+            </div>
+
+            <div class="form-group">
+                <label for="rtoCricos">CRICOS Code</label>
+                <input type="text" id="rtoCricos" placeholder="e.g., 01234K">
+            </div>
+
+            <div class="form-group">
+                <label for="rtoEmail">Contact Email *</label>
+                <input type="email" id="rtoEmail" required>
+            </div>
+
+            <div class="form-group">
+                <label for="rtoPhone">Contact Phone *</label>
+                <input type="tel" id="rtoPhone" required>
+            </div>
+
+            <div class="form-group">
+                <label for="rtoAddress">Address (Street)</label>
+                <input type="text" id="rtoAddress" placeholder="e.g., 123 Main St">
+            </div>
+
+            <div class="form-group">
+                <label for="rtoCity">City</label>
+                <input type="text" id="rtoCity" placeholder="e.g., Sydney">
+            </div>
+
+            <div class="form-group">
+                <label for="rtoState">State</label>
+                <input type="text" id="rtoState" placeholder="e.g., NSW">
+            </div>
+
+            <div class="form-group">
+                <label for="rtoPostcode">Postcode</label>
+                <input type="text" id="rtoPostcode" placeholder="e.g., 2000">
+            </div>
+
+            <div class="form-group">
+                <label for="rtoCountry">Country</label>
+                <input type="text" id="rtoCountry" placeholder="e.g., Australia">
+            </div>
+
+            <div class="form-group">
+                <label for="rtoAbn">ABN</label>
+                <input type="text" id="rtoAbn" placeholder="e.g., 12345678901">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('rtoModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadRtoProfiles() {
+        try {
+            const data = await makeRequest('GET', '/admin/rto-profiles');
+            const tbody = document.getElementById('rtoTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No RTO profiles found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(rto => `
+                <tr>
+                    <td><strong>${rto.name}</strong></td>
+                    <td>${rto.cricos_code || '-'}</td>
+                    <td>${rto.contact_email || '-'}</td>
+                    <td>${rto.contact_phone || '-'}</td>
+                    <td><span class="status-badge status-${rto.is_active ? 'active' : 'inactive'}">
+                        ${rto.is_active ? 'Active' : 'Inactive'}
+                    </span></td>
+                    <td>
+                        <button class="btn btn-secondary" onclick="editRto('${rto.id}')">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteRto('${rto.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading RTO profiles:', error);
+        }
+    }
+
+    async function handleRtoSubmit(event) {
+        event.preventDefault();
+        
+        const rtoId = document.getElementById('rtoId').value;
+        const data = {
+            name: document.getElementById('rtoName').value,
+            cricos_code: document.getElementById('rtoCricos').value,
+            contact_email: document.getElementById('rtoEmail').value,
+            contact_phone: document.getElementById('rtoPhone').value,
+            address: {
+                street: document.getElementById('rtoAddress').value,
+                city: document.getElementById('rtoCity').value,
+                state: document.getElementById('rtoState').value,
+                postcode: document.getElementById('rtoPostcode').value,
+                country: document.getElementById('rtoCountry').value,
+            },
+            abn: document.getElementById('rtoAbn').value || null,
+        };
+
+        try {
+            if (rtoId) {
+                await makeRequest('PATCH', `/admin/rto-profiles/${rtoId}`, data);
+                showAlert('RTO profile updated successfully', 'success');
+            } else {
+                await makeRequest('POST', '/admin/rto-profiles', data);
+                showAlert('RTO profile created successfully', 'success');
+            }
+            closeModal('rtoModal');
+            document.getElementById('rtoForm').reset();
+            document.getElementById('rtoId').value = '';
+            loadRtoProfiles();
+        } catch (error) {
+            console.error('Error saving RTO profile:', error);
+        }
+    }
+
+    async function editRto(id) {
+        try {
+            const rto = await makeRequest('GET', `/admin/rto-profiles/${id}`);
+            
+            document.getElementById('rtoId').value = rto.id;
+            document.getElementById('rtoName').value = rto.name;
+            document.getElementById('rtoCricos').value = rto.cricos_code || '';
+            document.getElementById('rtoEmail').value = rto.contact_email || '';
+            document.getElementById('rtoPhone').value = rto.contact_phone || '';
+            document.getElementById('rtoAddress').value = rto.address?.street || '';
+            document.getElementById('rtoCity').value = rto.address?.city || '';
+            document.getElementById('rtoState').value = rto.address?.state || '';
+            document.getElementById('rtoPostcode').value = rto.address?.postcode || '';
+            document.getElementById('rtoCountry').value = rto.address?.country || '';
+            document.getElementById('rtoAbn').value = rto.abn || '';
+            
+            document.getElementById('rtoModalTitle').textContent = 'Edit RTO Profile';
+            openModal('rtoModal');
+        } catch (error) {
+            console.error('Error loading RTO profile:', error);
+        }
+    }
+
+    async function deleteRto(id) {
+        if (confirm('Are you sure you want to delete this RTO profile?')) {
+            try {
+                await makeRequest('DELETE', `/admin/rto-profiles/${id}`);
+                showAlert('RTO profile deleted successfully', 'success');
+                loadRtoProfiles();
+            } catch (error) {
+                console.error('Error deleting RTO profile:', error);
+            }
+        }
+    }
+
+    // Load profiles on page load
+    loadRtoProfiles();
+</script>
+{% endblock %}

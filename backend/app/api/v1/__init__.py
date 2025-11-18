@@ -4,7 +4,7 @@ API v1 router aggregator.
 from fastapi import APIRouter
 
 # Import routers
-from app.api.v1.endpoints import application_steps, applications, auth, documents, staff, students
+from app.api.v1.endpoints import admin, admin_ui, application_steps, applications, auth, documents, staff, students
 
 api_router = APIRouter()
 
@@ -30,6 +30,14 @@ api_router.include_router(
     staff.router,
     prefix="/staff",
     tags=["Staff Workflow"])
+api_router.include_router(
+    admin.router,
+    prefix="/admin",
+    tags=["Admin"])
+api_router.include_router(
+    admin_ui.router,
+    prefix="/admin-panel",
+    tags=["Admin Panel UI"])
 
 # TODO: Add more routers as they're implemented
 # api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])

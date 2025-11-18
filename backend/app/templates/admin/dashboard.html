@@ -1,0 +1,66 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Welcome to Admin Dashboard</h2>
+    <p>Manage system configuration and static data</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="cards-grid">
+    <div class="card">
+        <h3>RTO Profiles</h3>
+        <div class="card-value">{{ rto_count }}</div>
+        <div class="card-subtext">Active organizations</div>
+    </div>
+
+    <div class="card">
+        <h3>Document Types</h3>
+        <div class="card-value">{{ doc_type_count }}</div>
+        <div class="card-subtext">Configured document types</div>
+    </div>
+
+    <div class="card">
+        <h3>Staff Members</h3>
+        <div class="card-value">{{ staff_count }}</div>
+        <div class="card-subtext">Active staff accounts</div>
+    </div>
+
+    <div class="card">
+        <h3>Courses</h3>
+        <div class="card-value">{{ course_count }}</div>
+        <div class="card-subtext">Available courses</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3 style="color: #666; text-transform: uppercase; margin-bottom: 1rem;">System Status</h3>
+    {% if configured %}
+        <div style="padding: 1rem; background: #c6f6d5; border-left: 4px solid #38a169; border-radius: 4px;">
+            <strong style="color: #22543d;">✓ System Configured</strong>
+            <p style="color: #22543d; margin-top: 0.5rem;">All required configurations are in place.</p>
+        </div>
+    {% else %}
+        <div style="padding: 1rem; background: #fed7d7; border-left: 4px solid #c53030; border-radius: 4px;">
+            <strong style="color: #742a2a;">⚠ System Not Configured</strong>
+            <p style="color: #742a2a; margin-top: 0.5rem;">
+                Please configure:
+                {% if rto_count == 0 %}<br>• RTO Profiles{% endif %}
+                {% if doc_type_count == 0 %}<br>• Document Types{% endif %}
+                {% if staff_count == 0 %}<br>• Staff Members{% endif %}
+                {% if course_count == 0 %}<br>• Courses{% endif %}
+            </p>
+        </div>
+    {% endif %}
+</div>
+
+<div style="margin-top: 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+    <a href="/api/v1/admin-panel/rto-profiles" class="btn btn-primary" style="text-align: center;">Manage RTO Profiles</a>
+    <a href="/api/v1/admin-panel/document-types" class="btn btn-primary" style="text-align: center;">Manage Document Types</a>
+    <a href="/api/v1/admin-panel/staff" class="btn btn-primary" style="text-align: center;">Manage Staff</a>
+    <a href="/api/v1/admin-panel/courses" class="btn btn-primary" style="text-align: center;">Manage Courses</a>
+</div>
+{% endblock %}

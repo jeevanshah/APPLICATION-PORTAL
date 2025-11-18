@@ -1,0 +1,143 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Staff Management - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Staff Members</h2>
+    <p>Manage staff accounts and permissions</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="btn-group">
+    <button class="btn btn-primary" onclick="openNewStaffModal()">+ Add Staff Member</button>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Department</th>
+                <th>Job Title</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="staffTableBody">
+            <tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Staff Member Modal -->
+<div class="modal" id="staffModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add Staff Member</h3>
+        </div>
+        <form id="staffForm" onsubmit="handleStaffSubmit(event)">
+            <div class="form-group">
+                <label for="staffEmail">Email *</label>
+                <input type="email" id="staffEmail" required>
+            </div>
+
+            <div class="form-group">
+                <label for="staffPassword">Password *</label>
+                <input type="password" id="staffPassword" required minlength="8" placeholder="Min 8 characters">
+            </div>
+
+            <div class="form-group">
+                <label for="staffDepartment">Department</label>
+                <input type="text" id="staffDepartment" placeholder="e.g., Admissions, Finance">
+            </div>
+
+            <div class="form-group">
+                <label for="staffJobTitle">Job Title</label>
+                <input type="text" id="staffJobTitle" placeholder="e.g., Admissions Officer">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('staffModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Account</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadStaff() {
+        try {
+            const data = await makeRequest('GET', '/admin/staff');
+            const tbody = document.getElementById('staffTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No staff members found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(staff => `
+                <tr>
+                    <td><strong>${staff.email}</strong></td>
+                    <td>${staff.staff_profile?.department || '-'}</td>
+                    <td>${staff.staff_profile?.job_title || '-'}</td>
+                    <td><span class="status-badge status-${staff.status === 'active' ? 'active' : 'inactive'}">
+                        ${staff.status || 'Active'}
+                    </span></td>
+                    <td>${new Date(staff.created_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-danger" onclick="deactivateStaff('${staff.id}')">Deactivate</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading staff:', error);
+        }
+    }
+
+    function openNewStaffModal() {
+        document.getElementById('staffForm').reset();
+        openModal('staffModal');
+    }
+
+    async function handleStaffSubmit(event) {
+        event.preventDefault();
+        
+        const data = {
+            email: document.getElementById('staffEmail').value,
+            password: document.getElementById('staffPassword').value,
+            department: document.getElementById('staffDepartment').value || 'General',
+            job_title: document.getElementById('staffJobTitle').value || null,
+        };
+
+        try {
+            await makeRequest('POST', '/admin/staff', data);
+            showAlert('Staff member created successfully', 'success');
+            closeModal('staffModal');
+            loadStaff();
+        } catch (error) {
+            console.error('Error creating staff member:', error);
+        }
+    }
+
+    async function deactivateStaff(id) {
+        if (confirm('Are you sure you want to deactivate this staff member?')) {
+            try {
+                await makeRequest('PATCH', `/admin/staff/${id}/deactivate`);
+                showAlert('Staff member deactivated successfully', 'success');
+                loadStaff();
+            } catch (error) {
+                console.error('Error deactivating staff member:', error);
+            }
+        }
+    }
+
+    // Load staff on page load
+    loadStaff();
+</script>
+{% endblock %}

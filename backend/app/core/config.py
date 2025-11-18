@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
-        "http://localhost:5173"]
+        "http://localhost:5173",
+        "http://localhost:5174"]
 
     # Azure Services
     AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None

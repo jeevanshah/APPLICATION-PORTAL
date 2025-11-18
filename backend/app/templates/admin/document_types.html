@@ -1,0 +1,195 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Document Types - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Document Types</h2>
+    <p>Define document types and their requirements</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="btn-group">
+    <button class="btn btn-primary" onclick="openNewDocTypeModal()">+ Add Document Type</button>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Stage</th>
+                <th>Mandatory</th>
+                <th>OCR Model</th>
+                <th>Order</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="docTypeTableBody">
+            <tr><td colspan="7" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add/Edit Document Type Modal -->
+<div class="modal" id="docTypeModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="docTypeModalTitle">Add Document Type</h3>
+        </div>
+        <form id="docTypeForm" onsubmit="handleDocTypeSubmit(event)">
+            <input type="hidden" id="docTypeId">
+            
+            <div class="form-group">
+                <label for="docCode">Code *</label>
+                <input type="text" id="docCode" placeholder="e.g., PASSPORT" required>
+            </div>
+
+            <div class="form-group">
+                <label for="docName">Name *</label>
+                <input type="text" id="docName" placeholder="e.g., Passport" required>
+            </div>
+
+            <div class="form-group">
+                <label for="docStage">Stage *</label>
+                <select id="docStage" required>
+                    <option value="">-- Select Stage --</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="STAFF_REVIEW">Staff Review</option>
+                    <option value="AWAITING_DOCUMENTS">Awaiting Documents</option>
+                    <option value="GS_ASSESSMENT">GS Assessment</option>
+                    <option value="OFFER_GENERATED">Offer Generated</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="docMandatory">
+                    <input type="checkbox" id="docMandatory">
+                    Mandatory Document
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="docOcrModel">OCR Model Reference</label>
+                <input type="text" id="docOcrModel" placeholder="e.g., passport, transcript, english_test">
+            </div>
+
+            <div class="form-group">
+                <label for="docOrder">Display Order</label>
+                <input type="number" id="docOrder" value="0" min="0">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('docTypeModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadDocumentTypes() {
+        try {
+            const data = await makeRequest('GET', '/admin/document-types');
+            const tbody = document.getElementById('docTypeTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">No document types found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(doc => `
+                <tr>
+                    <td><strong>${doc.code}</strong></td>
+                    <td>${doc.name}</td>
+                    <td><span style="background: #bee3f8; padding: 0.25rem 0.5rem; border-radius: 3px; font-size: 0.85rem;">${doc.stage}</span></td>
+                    <td>${doc.is_mandatory ? '✓' : '-'}</td>
+                    <td>${doc.ocr_model_ref || '-'}</td>
+                    <td>${doc.display_order}</td>
+                    <td>
+                        <button class="btn btn-secondary" onclick="editDocType('${doc.id}')">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteDocType('${doc.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading document types:', error);
+        }
+    }
+
+    function openNewDocTypeModal() {
+        document.getElementById('docTypeId').value = '';
+        document.getElementById('docTypeForm').reset();
+        document.getElementById('docTypeModalTitle').textContent = 'Add Document Type';
+        openModal('docTypeModal');
+    }
+
+    async function handleDocTypeSubmit(event) {
+        event.preventDefault();
+        
+        const docTypeId = document.getElementById('docTypeId').value;
+        const data = {
+            code: document.getElementById('docCode').value,
+            name: document.getElementById('docName').value,
+            stage: document.getElementById('docStage').value,
+            is_mandatory: document.getElementById('docMandatory').checked,
+            ocr_model_ref: document.getElementById('docOcrModel').value || null,
+            display_order: parseInt(document.getElementById('docOrder').value) || 0,
+        };
+
+        try {
+            if (docTypeId) {
+                await makeRequest('PATCH', `/admin/document-types/${docTypeId}`, data);
+                showAlert('Document type updated successfully', 'success');
+            } else {
+                await makeRequest('POST', '/admin/document-types', data);
+                showAlert('Document type created successfully', 'success');
+            }
+            closeModal('docTypeModal');
+            loadDocumentTypes();
+        } catch (error) {
+            console.error('Error saving document type:', error);
+        }
+    }
+
+    async function editDocType(id) {
+        try {
+            const doc = await makeRequest('GET', `/admin/document-types/${id}`);
+            
+            document.getElementById('docTypeId').value = doc.id;
+            document.getElementById('docCode').value = doc.code;
+            document.getElementById('docName').value = doc.name;
+            document.getElementById('docStage').value = doc.stage;
+            document.getElementById('docMandatory').checked = doc.is_mandatory;
+            document.getElementById('docOcrModel').value = doc.ocr_model_ref || '';
+            document.getElementById('docOrder').value = doc.display_order;
+            
+            document.getElementById('docTypeModalTitle').textContent = 'Edit Document Type';
+            openModal('docTypeModal');
+        } catch (error) {
+            console.error('Error loading document type:', error);
+        }
+    }
+
+    async function deleteDocType(id) {
+        if (confirm('Are you sure you want to delete this document type?')) {
+            try {
+                await makeRequest('DELETE', `/admin/document-types/${id}`);
+                showAlert('Document type deleted successfully', 'success');
+                loadDocumentTypes();
+            } catch (error) {
+                console.error('Error deleting document type:', error);
+            }
+        }
+    }
+
+    // Load document types on page load
+    loadDocumentTypes();
+</script>
+{% endblock %}

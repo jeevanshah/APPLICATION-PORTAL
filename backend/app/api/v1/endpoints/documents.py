@@ -50,7 +50,6 @@ async def upload_document(
 
     **Permissions:**
     - Agent: Can upload to their own applications
-    - Student: Can upload to their own applications
     - Staff: Can upload to assigned applications
     - Admin: Can upload to any application
 
@@ -63,6 +62,14 @@ async def upload_document(
     - Results available via GET /documents/{id}/ocr
     - Auto-fill suggestions via GET /applications/{id}/documents/autofill
     """
+    # Only agents, staff, and admins can upload documents
+    user_role = UserRole(current_user["role"])
+    if user_role == UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Students cannot upload documents. Please contact your agent."
+        )
+
     service = DocumentService(db)
 
     try:
@@ -79,7 +86,7 @@ async def upload_document(
             file=file_obj,
             filename=file.filename or "unnamed",
             user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"]),
+            user_role=user_role,
             process_ocr=process_ocr
         )
 
@@ -459,3 +466,34 @@ async def get_document_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/types", response_model=List[dict])
+async def get_document_types(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all available document types.
+    
+    Returns list of document types with their properties:
+    - id, code, name, stage
+    - is_mandatory: Whether document is required
+    - accepts_ocr: Whether OCR processing is available
+    """
+    from app.models import DocumentType
+    
+    doc_types = db.query(DocumentType).order_by(DocumentType.display_order).all()
+    
+    return [
+        {
+            "id": str(dt.id),
+            "code": dt.code,
+            "name": dt.name,
+            "stage": dt.stage.value if hasattr(dt.stage, 'value') else dt.stage,
+            "is_mandatory": dt.is_mandatory,
+            "accepts_ocr": dt.ocr_model_ref is not None,
+            "display_order": dt.display_order
+        }
+        for dt in doc_types
+    ]

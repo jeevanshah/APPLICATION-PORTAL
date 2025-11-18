@@ -1,0 +1,189 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Courses - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Courses</h2>
+    <p>Manage available course offerings</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="btn-group">
+    <button class="btn btn-primary" onclick="openNewCourseModal()">+ Add Course</button>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Course Name</th>
+                <th>Intake</th>
+                <th>Campus</th>
+                <th>Tuition Fee</th>
+                <th>Deadline</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="courseTableBody">
+            <tr><td colspan="8" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add/Edit Course Modal -->
+<div class="modal" id="courseModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="courseModalTitle">Add Course</h3>
+        </div>
+        <form id="courseForm" onsubmit="handleCourseSubmit(event)">
+            <input type="hidden" id="courseId">
+            
+            <div class="form-group">
+                <label for="courseCode">Course Code *</label>
+                <input type="text" id="courseCode" placeholder="e.g., BSB50120" required>
+            </div>
+
+            <div class="form-group">
+                <label for="courseName">Course Name *</label>
+                <input type="text" id="courseName" placeholder="e.g., Diploma of Business" required>
+            </div>
+
+            <div class="form-group">
+                <label for="courseIntake">Intake *</label>
+                <input type="text" id="courseIntake" placeholder="e.g., Feb 2025" required>
+            </div>
+
+            <div class="form-group">
+                <label for="courseCampus">Campus *</label>
+                <input type="text" id="courseCampus" placeholder="e.g., Sydney CBD" required>
+            </div>
+
+            <div class="form-group">
+                <label for="courseFee">Tuition Fee (AUD) *</label>
+                <input type="number" id="courseFee" placeholder="e.g., 15000" step="0.01" min="0" required>
+            </div>
+
+            <div class="form-group">
+                <label for="courseDeadline">Application Deadline</label>
+                <input type="date" id="courseDeadline">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('courseModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadCourses() {
+        try {
+            const data = await makeRequest('GET', '/admin/courses');
+            const tbody = document.getElementById('courseTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;">No courses found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(course => `
+                <tr>
+                    <td><strong>${course.course_code}</strong></td>
+                    <td>${course.course_name}</td>
+                    <td>${course.intake}</td>
+                    <td>${course.campus}</td>
+                    <td>$${ parseFloat(course.tuition_fee).toLocaleString('en-AU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) }</td>
+                    <td>${course.application_deadline ? new Date(course.application_deadline).toLocaleDateString() : '-'}</td>
+                    <td><span class="status-badge status-${course.is_active ? 'active' : 'inactive'}">
+                        ${course.is_active ? 'Active' : 'Inactive'}
+                    </span></td>
+                    <td>
+                        <button class="btn btn-secondary" onclick="editCourse('${course.id}')">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteCourse('${course.id}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading courses:', error);
+        }
+    }
+
+    function openNewCourseModal() {
+        document.getElementById('courseId').value = '';
+        document.getElementById('courseForm').reset();
+        document.getElementById('courseModalTitle').textContent = 'Add Course';
+        openModal('courseModal');
+    }
+
+    async function handleCourseSubmit(event) {
+        event.preventDefault();
+        
+        const courseId = document.getElementById('courseId').value;
+        const data = {
+            course_code: document.getElementById('courseCode').value,
+            course_name: document.getElementById('courseName').value,
+            intake: document.getElementById('courseIntake').value,
+            campus: document.getElementById('courseCampus').value,
+            tuition_fee: parseFloat(document.getElementById('courseFee').value),
+            application_deadline: document.getElementById('courseDeadline').value || null,
+        };
+
+        try {
+            if (courseId) {
+                await makeRequest('PATCH', `/admin/courses/${courseId}`, data);
+                showAlert('Course updated successfully', 'success');
+            } else {
+                await makeRequest('POST', '/admin/courses', data);
+                showAlert('Course created successfully', 'success');
+            }
+            closeModal('courseModal');
+            loadCourses();
+        } catch (error) {
+            console.error('Error saving course:', error);
+        }
+    }
+
+    async function editCourse(id) {
+        try {
+            const course = await makeRequest('GET', `/admin/courses/${id}`);
+            
+            document.getElementById('courseId').value = course.id;
+            document.getElementById('courseCode').value = course.course_code;
+            document.getElementById('courseName').value = course.course_name;
+            document.getElementById('courseIntake').value = course.intake;
+            document.getElementById('courseCampus').value = course.campus;
+            document.getElementById('courseFee').value = course.tuition_fee;
+            document.getElementById('courseDeadline').value = course.application_deadline ? course.application_deadline.split('T')[0] : '';
+            
+            document.getElementById('courseModalTitle').textContent = 'Edit Course';
+            openModal('courseModal');
+        } catch (error) {
+            console.error('Error loading course:', error);
+        }
+    }
+
+    async function deleteCourse(id) {
+        if (confirm('Are you sure you want to delete this course?')) {
+            try {
+                await makeRequest('DELETE', `/admin/courses/${id}`);
+                showAlert('Course deleted successfully', 'success');
+                loadCourses();
+            } catch (error) {
+                console.error('Error deleting course:', error);
+            }
+        }
+    }
+
+    // Load courses on page load
+    loadCourses();
+</script>
+{% endblock %}
