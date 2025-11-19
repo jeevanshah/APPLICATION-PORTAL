@@ -331,7 +331,7 @@ class Application(Base):
         UUID(
             as_uuid=True),
         ForeignKey("student_profile.id"),
-        nullable=False,
+        nullable=True,  # Nullable - created when application reaches ENROLLED stage
         index=True)
     agent_profile_id = Column(
         UUID(
@@ -366,9 +366,11 @@ class Application(Base):
     usi_verified = Column(Boolean, nullable=False, default=False)
     usi_verified_at = Column(DateTime, nullable=True)
 
-    # JSONB fields (10 total - consolidated from 19 former tables)
+    # JSONB fields (14 total - consolidated from 22 former tables)
     # {status, offer_signed_at, fee_received_at, coe_uploaded_at}
     enrollment_data = Column(JSONB, nullable=True)
+    # {given_name, family_name, date_of_birth, passport, email, phone, address}
+    personal_details = Column(JSONB, nullable=True, index=True)
     # [{name, relationship, phone, email, is_primary}]
     emergency_contacts = Column(JSONB, nullable=True)
     # {provider, policy_number, start_date, end_date, coverage_type}
@@ -377,6 +379,12 @@ class Application(Base):
     disability_support = Column(JSONB, nullable=True)
     # {first_language, other_languages, indigenous_status, country_of_birth, citizenship_status}
     language_cultural_data = Column(JSONB, nullable=True)
+    # [{institution, country, qualification_level, start_year, end_year, currently_attending, result}]
+    schooling_history = Column(JSONB, nullable=True, index=True)
+    # [{qualification_name, institution, completion_date, certificate_number}]
+    qualifications = Column(JSONB, nullable=True, index=True)
+    # [{employer, role, start_date, end_date, responsibilities, is_current}]
+    employment_history = Column(JSONB, nullable=True, index=True)
     # [{question_id, question_text, answer}]
     survey_responses = Column(JSONB, nullable=True)
     # [{service_id, name, fee, selected_at}]
@@ -385,7 +393,7 @@ class Application(Base):
     gs_assessment = Column(JSONB, nullable=True)
     # {envelope_id, provider, status, cost_cents, expires_at, completed_at, parties: [{role, name, email, signed_at}]}
     signature_data = Column(JSONB, nullable=True)
-    # {version, ip_address, user_agent, submission_duration_seconds}
+    # {version, ip_address, user_agent, submission_duration_seconds, completed_sections, last_edited_section, last_saved_at, auto_save_count}
     form_metadata = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -406,18 +414,6 @@ class Application(Base):
     stage_history = relationship(
         "ApplicationStageHistory",
         back_populates="application")
-    schooling_history = relationship(
-        "SchoolingHistory",
-        back_populates="application",
-        order_by="SchoolingHistory.display_order")
-    qualification_history = relationship(
-        "QualificationHistory",
-        back_populates="application",
-        order_by="QualificationHistory.display_order")
-    employment_history = relationship(
-        "EmploymentHistory",
-        back_populates="application",
-        order_by="EmploymentHistory.display_order")
     documents = relationship("Document", back_populates="application")
     timeline_entries = relationship(
         "TimelineEntry", back_populates="application")
@@ -505,94 +501,25 @@ class ApplicationStageHistory(Base):
             self.to_stage})>"
 
 
-class SchoolingHistory(Base):
-    """Student's schooling/education background (variable-length list)."""
-    __tablename__ = "schooling_history"
+# ============================================================================
+# DEPRECATED: Steps 6-8 now use JSONB columns in Application table
+# These classes kept for reference only - tables dropped in migration
+# ============================================================================
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    application_id = Column(
-        UUID(
-            as_uuid=True),
-        ForeignKey("application.id"),
-        nullable=False,
-        index=True)
+# class SchoolingHistory(Base):
+#     """Student's schooling/education background (variable-length list)."""
+#     __tablename__ = "schooling_history"
+# ... MOVED TO Application.schooling_history JSONB column
 
-    institution = Column(String(255), nullable=False)
-    country = Column(String(100), nullable=False, index=True)
-    start_year = Column(Integer, nullable=False)
-    end_year = Column(Integer, nullable=True)  # NULL if currently attending
-    # e.g., "High School Diploma", "Bachelor's Degree"
-    qualification_level = Column(String(100), nullable=False)
-    result = Column(String(100), nullable=True)  # e.g., GPA, percentage
-    display_order = Column(Integer, nullable=False, default=0)
+# class QualificationHistory(Base):
+#     """Professional qualifications and certifications."""
+#     __tablename__ = "qualification_history"
+# ... MOVED TO Application.qualifications JSONB column
 
-    # Relationships
-    application = relationship(
-        "Application",
-        back_populates="schooling_history")
-
-    def __repr__(self):
-        return f"<SchoolingHistory(institution='{
-            self.institution}', {
-            self.start_year}-{
-            self.end_year})>"
-
-
-class QualificationHistory(Base):
-    """Professional qualifications and certifications."""
-    __tablename__ = "qualification_history"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    application_id = Column(
-        UUID(
-            as_uuid=True),
-        ForeignKey("application.id"),
-        nullable=False,
-        index=True)
-
-    qualification_name = Column(String(255), nullable=False)
-    institution = Column(String(255), nullable=False)
-    completion_date = Column(Date, nullable=False)
-    certificate_number = Column(String(100), nullable=True)
-    display_order = Column(Integer, nullable=False, default=0)
-
-    # Relationships
-    application = relationship("Application",
-                               back_populates="qualification_history")
-
-    def __repr__(self):
-        return f"<QualificationHistory(qual='{self.qualification_name}')>"
-
-
-class EmploymentHistory(Base):
-    """Work experience records."""
-    __tablename__ = "employment_history"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    application_id = Column(
-        UUID(
-            as_uuid=True),
-        ForeignKey("application.id"),
-        nullable=False,
-        index=True)
-
-    employer = Column(String(255), nullable=False)
-    role = Column(String(255), nullable=False)
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=True)  # NULL if currently employed
-    responsibilities = Column(Text, nullable=True)
-    is_current = Column(Boolean, nullable=False, default=False)
-    display_order = Column(Integer, nullable=False, default=0)
-
-    # Relationships
-    application = relationship(
-        "Application",
-        back_populates="employment_history")
-
-    def __repr__(self):
-        return f"<EmploymentHistory(employer='{
-            self.employer}', role='{
-            self.role}')>"
+# class EmploymentHistory(Base):
+#     """Work experience records."""
+#     __tablename__ = "employment_history"
+# ... MOVED TO Application.employment_history JSONB column
 
 
 class DocumentType(Base):

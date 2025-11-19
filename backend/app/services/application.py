@@ -54,7 +54,7 @@ class ApplicationService:
     def create_draft(
         self,
         course_offering_id: UUID,
-        student_profile_id: UUID,
+        student_profile_id: Optional[UUID] = None,
         agent_profile_id: Optional[UUID] = None,
         user_id: Optional[UUID] = None,
         user_role: Optional[UserRole] = None
@@ -64,7 +64,7 @@ class ApplicationService:
 
         Args:
             course_offering_id: Course offering UUID
-            student_profile_id: Student profile UUID
+            student_profile_id: Optional student profile UUID (will be created at enrollment if not provided)
             agent_profile_id: Optional agent profile UUID
             user_id: User creating the application
             user_role: Role of creating user
@@ -73,18 +73,19 @@ class ApplicationService:
             Created application
 
         Raises:
-            ApplicationPermissionError: If student tries to create
+            ApplicationPermissionError: If non-agent user tries to create
             ApplicationValidationError: If validation fails
         """
-        # Students cannot create applications
-        if user_role == UserRole.STUDENT:
+        # Only agents can create applications
+        if user_role != UserRole.AGENT:
             raise ApplicationPermissionError(
-                "Students cannot create applications")
+                "Only agents can create applications on behalf of students")
 
-        # Validate student exists
-        student = self.student_repo.get_by_id(student_profile_id)
-        if not student:
-            raise ApplicationValidationError("Student profile not found")
+        # If student_profile_id provided, validate it exists
+        if student_profile_id:
+            student = self.student_repo.get_by_id(student_profile_id)
+            if not student:
+                raise ApplicationValidationError("Student profile not found")
 
         # If agent is creating, automatically use their agent_profile_id
         final_agent_profile_id = agent_profile_id
@@ -281,20 +282,30 @@ class ApplicationService:
                     app, key) and key != 'form_metadata':  # Handle form_metadata separately
                 setattr(app, key, value)
 
-        # Update form_metadata
+        # Update form_metadata with deep merge to preserve existing data
         if app.form_metadata:
             metadata = app.form_metadata.copy() if isinstance(app.form_metadata, dict) else {}
         else:
             metadata = {}
 
+        # Initialize metadata structure if needed
+        if 'version' not in metadata:
+            metadata['version'] = '1.0'
+        if 'completed_sections' not in metadata:
+            metadata['completed_sections'] = []
+
         metadata['last_saved_at'] = datetime.utcnow().isoformat()
         metadata['auto_save_count'] = metadata.get('auto_save_count', 0) + 1
 
         if 'form_metadata' in update_data:
-            # Merge incoming metadata
+            # Deep merge incoming metadata to preserve existing step data
             incoming = update_data['form_metadata']
             if isinstance(incoming, dict):
-                metadata.update(incoming)
+                for key, value in incoming.items():
+                    # Don't overwrite metadata tracking fields
+                    if key not in ['version', 'completed_sections', 'last_saved_at', 'auto_save_count', 
+                                   'ip_address', 'user_agent', 'submission_duration_seconds', 'last_edited_section']:
+                        metadata[key] = value
 
         app.form_metadata = metadata
         app.updated_at = datetime.utcnow()
@@ -534,11 +545,9 @@ class ApplicationService:
         user_role: UserRole
     ) -> Application:
         """Update Step 1: Personal Details."""
-        # Reuse update_application with specific metadata
+        # Store in dedicated personal_details JSONB column
         update_data = {
-            "form_metadata": {
-                "personal_details": data
-            }
+            "personal_details": data
         }
 
         app = self.update_application(
@@ -636,29 +645,13 @@ class ApplicationService:
         user_role: UserRole
     ) -> Application:
         """Update Step 6: Schooling History."""
-        from app.models import SchoolingHistory
+        # Store in dedicated schooling_history JSONB column
+        update_data = {
+            "schooling_history": schooling_entries
+        }
 
-        app = self.app_repo.get_by_id(application_id)
-        if not app:
-            raise ApplicationNotFoundError("Application not found")
-
-        # Check permissions
-        if not self._can_edit(app, user_id, user_role):
-            raise ApplicationPermissionError("Cannot edit this application")
-
-        # Delete existing schooling history
-        for entry in app.schooling_history:
-            self.db.delete(entry)
-
-        # Add new entries
-        for idx, entry_data in enumerate(schooling_entries):
-            schooling = SchoolingHistory(
-                application_id=application_id,
-                display_order=idx,
-                **entry_data
-            )
-            self.db.add(schooling)
-
+        app = self.update_application(
+            application_id, update_data, user_id, user_role)
         self._update_step_metadata(app, "schooling")
         self.db.commit()
         self.db.refresh(app)
@@ -673,29 +666,13 @@ class ApplicationService:
         user_role: UserRole
     ) -> Application:
         """Update Step 7: Previous Qualifications."""
-        from app.models import QualificationHistory
+        # Store in dedicated qualifications JSONB column
+        update_data = {
+            "qualifications": qualification_entries
+        }
 
-        app = self.app_repo.get_by_id(application_id)
-        if not app:
-            raise ApplicationNotFoundError("Application not found")
-
-        # Check permissions
-        if not self._can_edit(app, user_id, user_role):
-            raise ApplicationPermissionError("Cannot edit this application")
-
-        # Delete existing qualifications
-        for entry in app.qualification_history:
-            self.db.delete(entry)
-
-        # Add new entries
-        for idx, entry_data in enumerate(qualification_entries):
-            qual = QualificationHistory(
-                application_id=application_id,
-                display_order=idx,
-                **entry_data
-            )
-            self.db.add(qual)
-
+        app = self.update_application(
+            application_id, update_data, user_id, user_role)
         self._update_step_metadata(app, "previous_qualifications")
         self.db.commit()
         self.db.refresh(app)
@@ -710,31 +687,18 @@ class ApplicationService:
         user_role: UserRole
     ) -> Application:
         """Update Step 8: Employment History."""
-        from app.models import EmploymentHistory
+        # Store in dedicated employment_history JSONB column
+        update_data = {
+            "employment_history": employment_entries
+        }
 
-        app = self.app_repo.get_by_id(application_id)
-        if not app:
-            raise ApplicationNotFoundError("Application not found")
-
-        # Check permissions
-        if not self._can_edit(app, user_id, user_role):
-            raise ApplicationPermissionError("Cannot edit this application")
-
-        # Delete existing employment history
-        for entry in app.employment_history:
-            self.db.delete(entry)
-
-        # Add new entries
-        for idx, entry_data in enumerate(employment_entries):
-            employment = EmploymentHistory(
-                application_id=application_id,
-                display_order=idx,
-                **entry_data
-            )
-            self.db.add(employment)
-
+        app = self.update_application(
+            application_id, update_data, user_id, user_role)
         self._update_step_metadata(app, "employment")
         self.db.commit()
+        self.db.refresh(app)
+
+        return app
         self.db.refresh(app)
 
         return app

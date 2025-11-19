@@ -31,7 +31,7 @@ class TestAgentCreatesStudent:
             "family_name": "Student",
             "date_of_birth": "1998-05-15",
             "passport_number": "TS1234567",
-            "nationality": "Indian",
+            "nationality": "Nepalese",
             "visa_type": "Student Visa (Subclass 500)",
             "phone": "+61 400 111 222",
             "address": "123 Test St, Sydney NSW 2000"

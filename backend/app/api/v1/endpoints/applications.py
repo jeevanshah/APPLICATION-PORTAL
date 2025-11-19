@@ -106,18 +106,14 @@ async def create_application_draft(
     """
     Create new application in DRAFT stage.
 
-    **Permissions:** Agent/Staff/Admin only. Students cannot create applications.
-    Agents create applications on behalf of students and fill all details.
+    **Permissions:** AGENT ONLY. Only agents can create applications on behalf of students.
+    Agents are responsible for filling all application details for their students.
     """
     app_service = ApplicationService(db)
 
     try:
-        # Validate student_profile_id is provided
-        if not request.student_profile_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="student_profile_id required when creating application"
-            )
+        # Agent creates application - student_profile_id is optional
+        # It will be created later when application reaches ENROLLED stage
 
         # Create draft application using service
         new_app = app_service.create_draft(
@@ -261,7 +257,7 @@ async def update_application(
     """
     Update application (auto-save or manual save).
 
-    **Permissions:** Agent/Staff/Admin only. Students cannot edit applications.
+    **Permissions:** AGENT ONLY. Only agents can edit applications.
     Agents fill the entire application form on behalf of students.
     Supports partial updates - only provided fields are updated.
     """
@@ -329,7 +325,7 @@ async def submit_application(
     """
     Submit application for review.
 
-    **Permissions:** Agent/Staff/Admin only. Students cannot submit applications.
+    **Permissions:** AGENT ONLY. Only agents can submit applications.
     Transitions from DRAFT → SUBMITTED stage.
     Validates all required fields are completed.
     """

@@ -537,7 +537,7 @@ Get workload metrics for current staff member.
         "given_name": "John",
         "family_name": "Smith",
         "email": "john@example.com",
-        "nationality": "India"
+        "nationality": "Nepal"
       },
       "course": {
         "id": "course-uuid",

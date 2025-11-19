@@ -38,10 +38,7 @@ class ApplicationRepository(BaseRepository[Application]):
             joinedload(Application.agent),
             joinedload(Application.course),
             joinedload(Application.assigned_staff),
-            joinedload(Application.documents),
-            joinedload(Application.schooling_history),
-            joinedload(Application.qualification_history),
-            joinedload(Application.employment_history)
+            joinedload(Application.documents)
         ).first()
 
     def get_by_student(

@@ -14,6 +14,30 @@ from pydantic import BaseModel, EmailStr, Field
 # ============================================================================
 
 
+class PersonalDetailsSchema(BaseModel):
+    """Personal details (stored in APPLICATION.personal_details)."""
+    given_name: str = Field(..., min_length=1, max_length=100)
+    middle_name: Optional[str] = Field(None, max_length=100)
+    family_name: str = Field(..., min_length=1, max_length=100)
+    date_of_birth: date
+    gender: str
+    email: EmailStr
+    phone: str = Field(..., min_length=5, max_length=50)
+    
+    # Address
+    street_address: str
+    suburb: str
+    state: str
+    postcode: str
+    country: str = "Australia"
+    
+    # Identity
+    passport_number: Optional[str] = Field(None, max_length=50)
+    passport_expiry: Optional[date] = None
+    nationality: str
+    country_of_birth: str
+
+
 class EmergencyContactSchema(BaseModel):
     """Emergency contact information (stored in APPLICATION.emergency_contacts array)."""
     name: str = Field(..., min_length=1, max_length=255)

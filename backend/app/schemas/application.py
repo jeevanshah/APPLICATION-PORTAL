@@ -2,7 +2,7 @@
 Application schemas with JSONB field validation and draft/resume support.
 """
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -124,6 +124,15 @@ class ApplicationCreateRequest(BaseModel):
     # Optional: pre-fill with student profile data if available
     student_profile_id: Optional[UUID] = None
 
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "course_offering_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "agent_profile_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                # student_profile_id is optional - typically null for new applications
+            }
+        }
+
 
 class ApplicationUpdateRequest(BaseModel):
     """Update application (auto-save or manual save)."""
@@ -169,7 +178,7 @@ class ApplicationStageChangeRequest(BaseModel):
 class ApplicationSummary(BaseModel):
     """Lightweight application list item."""
     id: UUID
-    student_profile_id: UUID
+    student_profile_id: Optional[UUID] = None  # Nullable - created when application enrolled
     course_offering_id: UUID
     current_stage: ApplicationStage
     submitted_at: Optional[datetime]
@@ -192,7 +201,7 @@ class ApplicationSummary(BaseModel):
 class ApplicationDetail(BaseModel):
     """Full application details."""
     id: UUID
-    student_profile_id: UUID
+    student_profile_id: Optional[UUID] = None  # Nullable - created when application enrolled
     agent_profile_id: Optional[UUID]
     course_offering_id: UUID
     assigned_staff_id: Optional[UUID]
@@ -207,14 +216,20 @@ class ApplicationDetail(BaseModel):
     usi_verified: bool
     usi_verified_at: Optional[datetime]
 
-    # JSONB fields
+    # JSONB fields - Form Steps
+    personal_details: Optional[Dict[str, Any]]  # Step 1
+    emergency_contacts: Optional[List[EmergencyContact]]  # Step 2
+    health_cover_policy: Optional[HealthCoverPolicy]  # Step 3
+    language_cultural_data: Optional[LanguageCulturalData]  # Step 4
+    disability_support: Optional[DisabilitySupport]  # Step 5
+    schooling_history: Optional[List[Dict[str, Any]]]  # Step 6
+    qualifications: Optional[List[Dict[str, Any]]]  # Step 7
+    employment_history: Optional[List[Dict[str, Any]]]  # Step 8
+    additional_services: Optional[List[AdditionalService]]  # Step 10
+    survey_responses: Optional[List[SurveyResponse]]  # Step 11
+    
+    # JSONB fields - Business Data
     enrollment_data: Optional[EnrollmentData]
-    emergency_contacts: Optional[List[EmergencyContact]]
-    health_cover_policy: Optional[HealthCoverPolicy]
-    disability_support: Optional[DisabilitySupport]
-    language_cultural_data: Optional[LanguageCulturalData]
-    survey_responses: Optional[List[SurveyResponse]]
-    additional_services: Optional[List[AdditionalService]]
     gs_assessment: Optional[GSAssessment]
     signature_data: Optional[SignatureData]
     form_metadata: Optional[FormMetadata]

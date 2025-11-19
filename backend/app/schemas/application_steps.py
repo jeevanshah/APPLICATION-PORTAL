@@ -53,8 +53,8 @@ class PersonalDetailsRequest(BaseModel):
                 "country": "Australia",
                 "passport_number": "AB1234567",
                 "passport_expiry": "2030-12-31",
-                "nationality": "Indian",
-                "country_of_birth": "India"
+                "nationality": "Nepalese",
+                "country_of_birth": "Nepal"
             }
         }
 

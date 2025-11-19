@@ -39,7 +39,7 @@ class StudentProfileCreateRequest(BaseModel):
                 "family_name": "Doe",
                 "date_of_birth": "1995-03-15",
                 "passport_number": "AB1234567",
-                "nationality": "Indian",
+                "nationality": "Nepalese",
                 "visa_type": "Student Visa (Subclass 500)",
                 "phone": "+61 400 123 456",
                 "address": "123 Main St, Sydney NSW 2000"
