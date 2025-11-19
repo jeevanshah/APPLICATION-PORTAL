@@ -12,10 +12,12 @@ from app.api.dependencies import get_current_user
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    create_password_reset_token,
     decode_token,
     generate_mfa_secret,
     get_password_hash,
     get_totp_provisioning_uri,
+    verify_password_reset_token,
     verify_totp_token,
 )
 from app.db.database import get_db
@@ -64,6 +66,17 @@ class MfaVerifyRequest(BaseModel):
 class TokenRefreshRequest(BaseModel):
     """Token refresh request."""
     refresh_token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Forgot password request."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password request."""
+    token: str
+    new_password: str
 
 
 # ============================================================================
@@ -322,4 +335,83 @@ async def get_current_user_info(
         "mfa_enabled": current_user.mfa_enabled,
         "created_at": current_user.created_at,
         "last_login_at": current_user.last_login_at
+    }
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Request password reset email.
+    Sends an email with a reset token that expires in 30 minutes.
+    
+    **Security Note**: Returns success even if email doesn't exist
+    to prevent email enumeration attacks.
+    """
+    # Look up user
+    user = db.query(UserAccount).filter(
+        UserAccount.email == request.email
+    ).first()
+    
+    # Always return success to prevent email enumeration
+    # But only send email if user exists
+    if user:
+        # Generate reset token
+        reset_token = create_password_reset_token(user.email)
+        
+        # In production, send email here
+        # For now, we'll log it or use a simple email utility
+        from app.utils.email import send_password_reset_email
+        try:
+            send_password_reset_email(
+                email=user.email,
+                token=reset_token,
+                user_name=user.email.split('@')[0]
+            )
+        except Exception as e:
+            # Log error but don't expose it to user
+            print(f"Failed to send password reset email: {e}")
+    
+    # Always return success message
+    return {
+        "message": "If the email exists, a password reset link has been sent."
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Reset password using the token from forgot-password email.
+    """
+    # Verify token and get email
+    email = verify_password_reset_token(request.token)
+    
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token"
+        )
+    
+    # Get user
+    user = db.query(UserAccount).filter(
+        UserAccount.email == email
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update password
+    user.password_hash = get_password_hash(request.new_password)
+    db.commit()
+    
+    return {
+        "message": "Password has been reset successfully. You can now log in with your new password."
     }

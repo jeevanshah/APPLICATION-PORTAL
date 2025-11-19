@@ -3,6 +3,7 @@ Security utilities: password hashing, JWT tokens, MFA.
 """
 from datetime import datetime, timedelta
 from typing import Optional
+import secrets
 
 import bcrypt
 import pyotp
@@ -129,3 +130,50 @@ def get_totp_provisioning_uri(secret: str, email: str) -> str:
     """
     totp = pyotp.TOTP(secret)
     return totp.provisioning_uri(name=email, issuer_name=settings.APP_NAME)
+
+
+def create_password_reset_token(email: str) -> str:
+    """
+    Create JWT token for password reset.
+
+    Args:
+        email: User email
+
+    Returns:
+        Encoded JWT token string
+    """
+    expire = datetime.utcnow() + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    to_encode = {
+        "sub": email,
+        "exp": expire,
+        "type": "password_reset"
+    }
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
+    )
+    return encoded_jwt
+
+
+def verify_password_reset_token(token: str) -> Optional[str]:
+    """
+    Verify password reset token and return email.
+
+    Args:
+        token: JWT reset token
+
+    Returns:
+        Email if valid, None otherwise
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM]
+        )
+        if payload.get("type") != "password_reset":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
