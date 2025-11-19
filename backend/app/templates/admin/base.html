@@ -38,8 +38,29 @@
         }
 
         .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
             font-size: 0.9rem;
+        }
+        
+        .user-email {
             opacity: 0.9;
+        }
+        
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
         }
 
         .sidebar {
@@ -349,6 +370,15 @@
             color: #742a2a;
         }
 
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -371,7 +401,8 @@
         <div class="navbar-content">
             <h1>🔧 Admin Panel</h1>
             <div class="user-info">
-                Logged in as: <strong>{{ user_email }}</strong>
+                <span class="user-email" id="user-email">Loading...</span>
+                <button class="logout-btn" onclick="logout()">Logout</button>
             </div>
         </div>
     </div>
@@ -381,6 +412,7 @@
         <a href="/api/v1/admin-panel/rto-profiles" class="sidebar-item {% if 'rto' in request.url.path %}active{% endif %}">🏢 RTO Profiles</a>
         <a href="/api/v1/admin-panel/document-types" class="sidebar-item {% if 'document' in request.url.path %}active{% endif %}">📄 Document Types</a>
         <a href="/api/v1/admin-panel/staff" class="sidebar-item {% if 'staff' in request.url.path %}active{% endif %}">👥 Staff Members</a>
+        <a href="/api/v1/admin-panel/agents" class="sidebar-item {% if 'agents' in request.url.path %}active{% endif %}">🤝 Agent Partners</a>
         <a href="/api/v1/admin-panel/courses" class="sidebar-item {% if 'course' in request.url.path %}active{% endif %}">📚 Courses</a>
     </div>
 
@@ -403,7 +435,13 @@
         }
 
         async function makeRequest(method, endpoint, data = null) {
-            const token = localStorage.getItem('access_token');
+            const token = localStorage.getItem('admin_token') || localStorage.getItem('access_token');
+            
+            if (!token) {
+                window.location.href = '/api/v1/admin-panel/login';
+                return;
+            }
+            
             const options = {
                 method,
                 headers: {
@@ -418,6 +456,14 @@
 
             try {
                 const response = await fetch(`${API_BASE}${endpoint}`, options);
+                
+                if (response.status === 401 || response.status === 403) {
+                    localStorage.removeItem('admin_token');
+                    localStorage.removeItem('admin_user');
+                    window.location.href = '/api/v1/admin-panel/login';
+                    return;
+                }
+                
                 const result = await response.json();
                 
                 if (!response.ok) {
@@ -429,6 +475,37 @@
                 showAlert(error.message, 'error');
                 throw error;
             }
+        }
+        
+        // Check authentication on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('admin_token') || localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/api/v1/admin-panel/login';
+                return;
+            }
+            
+            // Load user info
+            const userStr = localStorage.getItem('admin_user') || localStorage.getItem('user');
+            if (userStr) {
+                try {
+                    const user = JSON.parse(userStr);
+                    const userEmailEl = document.getElementById('user-email');
+                    if (userEmailEl) {
+                        userEmailEl.textContent = `Logged in as: ${user.email || 'Admin'}`;
+                    }
+                } catch (e) {
+                    console.error('Failed to parse user data', e);
+                }
+            }
+        });
+        
+        function logout() {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_user');
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user');
+            window.location.href = '/api/v1/admin-panel/login';
         }
 
         function openModal(modalId) {

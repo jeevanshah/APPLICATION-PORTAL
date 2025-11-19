@@ -110,6 +110,7 @@ class RtoProfile(Base):
         nullable=False,
         default=datetime.utcnow,
         onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
 
     # Relationships
     users = relationship("UserAccount", back_populates="rto_profile")
@@ -306,6 +307,7 @@ class CourseOffering(Base):
     is_active = Column(Boolean, nullable=False, default=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
 
     # Relationships
     applications = relationship("Application", back_populates="course")
@@ -609,6 +611,7 @@ class DocumentType(Base):
     # Azure Form Recognizer model ID
     ocr_model_ref = Column(String(100), nullable=True)
     display_order = Column(Integer, nullable=False, default=0)
+    deleted_at = Column(DateTime, nullable=True)
 
     # Relationships
     documents = relationship("Document", back_populates="document_type")

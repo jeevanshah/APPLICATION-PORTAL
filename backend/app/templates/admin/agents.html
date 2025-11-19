@@ -1,0 +1,241 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Agent Management - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Agent Partners</h2>
+    <p>Manage education agent accounts and partnerships</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="btn-group">
+    <button class="btn btn-primary" onclick="openNewAgentModal()">+ Add Agent</button>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>RTO</th>
+                <th>Organization</th>
+                <th>Contact Person</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="agentTableBody">
+            <tr><td colspan="8" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Agent Modal -->
+<div class="modal" id="agentModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="agentModalTitle">Add Agent Partner</h3>
+        </div>
+        <form id="agentForm" onsubmit="handleAgentSubmit(event)">
+            <input type="hidden" id="agentId">
+            <div class="form-group">
+                <label for="agentEmail">Email *</label>
+                <input type="email" id="agentEmail" required>
+            </div>
+
+            <div class="form-group" id="passwordGroup">
+                <label for="agentPassword">Password *</label>
+                <input type="password" id="agentPassword" required minlength="8" placeholder="Min 8 characters">
+                <small style="color: #666; font-size: 0.85rem;">Leave empty when editing to keep current password</small>
+            </div>
+
+            <div class="form-group">
+                <label for="agentRto">RTO Organization</label>
+                <select id="agentRto">
+                    <option value="">-- Use Admin's RTO --</option>
+                </select>
+                <small style="color: #666; font-size: 0.85rem;">Leave empty to use your RTO organization</small>
+            </div>
+
+            <div class="form-group">
+                <label for="agentOrganization">Organization Name *</label>
+                <input type="text" id="agentOrganization" required placeholder="e.g., Global Education Services">
+            </div>
+
+            <div class="form-group">
+                <label for="agentContactPerson">Contact Person</label>
+                <input type="text" id="agentContactPerson" placeholder="e.g., John Smith">
+            </div>
+
+            <div class="form-group">
+                <label for="agentPhone">Phone</label>
+                <input type="tel" id="agentPhone" placeholder="e.g., +61 2 1234 5678">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('agentModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Agent Account</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let rtoProfiles = [];
+
+    async function loadRtoProfiles() {
+        try {
+            const data = await makeRequest('GET', '/admin/rto-profiles');
+            rtoProfiles = data;
+            
+            // Populate RTO dropdown
+            const rtoSelect = document.getElementById('agentRto');
+            rtoSelect.innerHTML = '<option value="">-- Use Admin\'s RTO --</option>' +
+                rtoProfiles.map(rto => 
+                    `<option value="${rto.id}">${rto.name}</option>`
+                ).join('');
+        } catch (error) {
+            console.error('Error loading RTO profiles:', error);
+        }
+    }
+
+    async function loadAgents() {
+        try {
+            const data = await makeRequest('GET', '/admin/agents');
+            const tbody = document.getElementById('agentTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;">No agents found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(agent => {
+                const rto = rtoProfiles.find(r => r.id === agent.rto_profile_id);
+                const isActive = agent.status === 'active' || agent.status === 'ACTIVE';
+                return `
+                    <tr>
+                        <td><strong>${agent.email}</strong></td>
+                        <td>${rto ? rto.name : '-'}</td>
+                        <td>${agent.agent_profile?.agency_name || '-'}</td>
+                        <td>${agent.agent_profile?.address?.includes('Contact:') ? agent.agent_profile.address.replace('Contact: ', '') : '-'}</td>
+                        <td>${agent.agent_profile?.phone || '-'}</td>
+                        <td><span class="status-badge status-${isActive ? 'active' : 'inactive'}">
+                            ${agent.status || 'Active'}
+                        </span></td>
+                        <td>${agent.created_at ? new Date(agent.created_at).toLocaleDateString() : '-'}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick='editAgent(${JSON.stringify(agent)})' style="margin-right: 0.5rem;">Edit</button>
+                            ${isActive ? 
+                                `<button class="btn btn-danger" onclick="deactivateAgent('${agent.id}')">Deactivate</button>` :
+                                `<button class="btn btn-success" onclick="activateAgent('${agent.id}')">Activate</button>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading agents:', error);
+        }
+    }
+
+    function openNewAgentModal() {
+        document.getElementById('agentForm').reset();
+        document.getElementById('agentId').value = '';
+        document.getElementById('agentModalTitle').textContent = 'Add Agent Partner';
+        document.getElementById('agentPassword').required = true;
+        document.getElementById('passwordGroup').querySelector('small').style.display = 'none';
+        openModal('agentModal');
+    }
+
+    function editAgent(agent) {
+        document.getElementById('agentId').value = agent.id;
+        document.getElementById('agentEmail').value = agent.email;
+        document.getElementById('agentPassword').value = '';
+        document.getElementById('agentPassword').required = false;
+        document.getElementById('passwordGroup').querySelector('small').style.display = 'block';
+        document.getElementById('agentOrganization').value = agent.agent_profile?.agency_name || '';
+        document.getElementById('agentContactPerson').value = agent.agent_profile?.address?.replace('Contact: ', '') || '';
+        document.getElementById('agentPhone').value = agent.agent_profile?.phone || '';
+        document.getElementById('agentRto').value = agent.rto_profile_id || '';
+        document.getElementById('agentModalTitle').textContent = 'Edit Agent Partner';
+        openModal('agentModal');
+    }
+
+    async function handleAgentSubmit(event) {
+        event.preventDefault();
+        
+        const agentId = document.getElementById('agentId').value;
+        const isEdit = !!agentId;
+        
+        const data = {
+            email: document.getElementById('agentEmail').value,
+            organization_name: document.getElementById('agentOrganization').value,
+            contact_person: document.getElementById('agentContactPerson').value || null,
+            phone: document.getElementById('agentPhone').value || null,
+        };
+
+        // Add password only if provided (for create or password change)
+        const password = document.getElementById('agentPassword').value;
+        if (password) {
+            data.password = password;
+        }
+
+        // Add RTO profile ID if selected
+        const rtoId = document.getElementById('agentRto').value;
+        if (rtoId) {
+            data.rto_profile_id = rtoId;
+        }
+
+        try {
+            if (isEdit) {
+                await makeRequest('PUT', `/admin/agents/${agentId}`, data);
+                showAlert('Agent updated successfully', 'success');
+            } else {
+                await makeRequest('POST', '/admin/agents', data);
+                showAlert('Agent created successfully', 'success');
+            }
+            closeModal('agentModal');
+            loadAgents();
+        } catch (error) {
+            console.error('Error saving agent:', error);
+        }
+    }
+
+    async function deactivateAgent(id) {
+        if (confirm('Are you sure you want to deactivate this agent?')) {
+            try {
+                await makeRequest('PATCH', `/admin/agents/${id}/deactivate`);
+                showAlert('Agent deactivated successfully', 'success');
+                loadAgents();
+            } catch (error) {
+                console.error('Error deactivating agent:', error);
+            }
+        }
+    }
+
+    async function activateAgent(id) {
+        if (confirm('Are you sure you want to activate this agent?')) {
+            try {
+                await makeRequest('PATCH', `/admin/agents/${id}/activate`);
+                showAlert('Agent activated successfully', 'success');
+                loadAgents();
+            } catch (error) {
+                console.error('Error activating agent:', error);
+            }
+        }
+    }
+
+    // Load agents on page load
+    window.addEventListener('DOMContentLoaded', async () => {
+        await loadRtoProfiles();
+        await loadAgents();
+    });
+</script>
+{% endblock %}

@@ -56,12 +56,6 @@
                 <label for="docStage">Stage *</label>
                 <select id="docStage" required>
                     <option value="">-- Select Stage --</option>
-                    <option value="DRAFT">Draft</option>
-                    <option value="SUBMITTED">Submitted</option>
-                    <option value="STAFF_REVIEW">Staff Review</option>
-                    <option value="AWAITING_DOCUMENTS">Awaiting Documents</option>
-                    <option value="GS_ASSESSMENT">GS Assessment</option>
-                    <option value="OFFER_GENERATED">Offer Generated</option>
                 </select>
             </div>
 
@@ -94,6 +88,26 @@
 
 {% block scripts %}
 <script>
+    let applicationStages = [];
+
+    async function loadEnums() {
+        try {
+            const enums = await makeRequest('GET', '/admin/enums');
+            applicationStages = enums.application_stages;
+            
+            // Populate stage dropdown
+            const stageSelect = document.getElementById('docStage');
+            const currentValue = stageSelect.value;
+            stageSelect.innerHTML = '<option value="">-- Select Stage --</option>' +
+                applicationStages.map(stage => 
+                    `<option value="${stage.value}">${stage.label}</option>`
+                ).join('');
+            if (currentValue) stageSelect.value = currentValue;
+        } catch (error) {
+            console.error('Error loading enums:', error);
+        }
+    }
+
     async function loadDocumentTypes() {
         try {
             const data = await makeRequest('GET', '/admin/document-types');
@@ -104,20 +118,23 @@
                 return;
             }
 
-            tbody.innerHTML = data.map(doc => `
-                <tr>
-                    <td><strong>${doc.code}</strong></td>
-                    <td>${doc.name}</td>
-                    <td><span style="background: #bee3f8; padding: 0.25rem 0.5rem; border-radius: 3px; font-size: 0.85rem;">${doc.stage}</span></td>
-                    <td>${doc.is_mandatory ? '✓' : '-'}</td>
-                    <td>${doc.ocr_model_ref || '-'}</td>
-                    <td>${doc.display_order}</td>
-                    <td>
-                        <button class="btn btn-secondary" onclick="editDocType('${doc.id}')">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteDocType('${doc.id}')">Delete</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = data.map(doc => {
+                const stageLabel = applicationStages.find(s => s.value === doc.stage)?.label || doc.stage;
+                return `
+                    <tr>
+                        <td><strong>${doc.code}</strong></td>
+                        <td>${doc.name}</td>
+                        <td><span style="background: #bee3f8; padding: 0.25rem 0.5rem; border-radius: 3px; font-size: 0.85rem;">${stageLabel}</span></td>
+                        <td>${doc.is_mandatory ? '✓' : '-'}</td>
+                        <td>${doc.ocr_model_ref || '-'}</td>
+                        <td>${doc.display_order}</td>
+                        <td>
+                            <button class="btn btn-secondary" onclick="editDocType('${doc.id}')">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteDocType('${doc.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         } catch (error) {
             console.error('Error loading document types:', error);
         }
@@ -189,7 +206,10 @@
         }
     }
 
-    // Load document types on page load
-    loadDocumentTypes();
+    // Load enums and document types on page load
+    window.addEventListener('DOMContentLoaded', async () => {
+        await loadEnums();
+        await loadDocumentTypes();
+    });
 </script>
 {% endblock %}

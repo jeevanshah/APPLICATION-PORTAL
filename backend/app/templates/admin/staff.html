@@ -19,6 +19,7 @@
         <thead>
             <tr>
                 <th>Email</th>
+                <th>RTO</th>
                 <th>Department</th>
                 <th>Job Title</th>
                 <th>Status</th>
@@ -27,7 +28,7 @@
             </tr>
         </thead>
         <tbody id="staffTableBody">
-            <tr><td colspan="6" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+            <tr><td colspan="7" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
         </tbody>
     </table>
 </div>
@@ -36,17 +37,27 @@
 <div class="modal" id="staffModal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Add Staff Member</h3>
+            <h3 id="staffModalTitle">Add Staff Member</h3>
         </div>
         <form id="staffForm" onsubmit="handleStaffSubmit(event)">
+            <input type="hidden" id="staffId">
             <div class="form-group">
                 <label for="staffEmail">Email *</label>
                 <input type="email" id="staffEmail" required>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="passwordGroup">
                 <label for="staffPassword">Password *</label>
                 <input type="password" id="staffPassword" required minlength="8" placeholder="Min 8 characters">
+                <small style="color: #666; font-size: 0.85rem;">Leave empty when editing to keep current password</small>
+            </div>
+
+            <div class="form-group">
+                <label for="staffRto">RTO Organization</label>
+                <select id="staffRto">
+                    <option value="">-- Use Admin's RTO --</option>
+                </select>
+                <small style="color: #666; font-size: 0.85rem;">Leave empty to use your RTO organization</small>
             </div>
 
             <div class="form-group">
@@ -71,30 +82,57 @@
 
 {% block scripts %}
 <script>
+    let rtoProfiles = [];
+
+    async function loadRtoProfiles() {
+        try {
+            const data = await makeRequest('GET', '/admin/rto-profiles');
+            rtoProfiles = data;
+            
+            // Populate RTO dropdown
+            const rtoSelect = document.getElementById('staffRto');
+            rtoSelect.innerHTML = '<option value="">-- Use Admin\'s RTO --</option>' +
+                rtoProfiles.map(rto => 
+                    `<option value="${rto.id}">${rto.name}</option>`
+                ).join('');
+        } catch (error) {
+            console.error('Error loading RTO profiles:', error);
+        }
+    }
+
     async function loadStaff() {
         try {
             const data = await makeRequest('GET', '/admin/staff');
             const tbody = document.getElementById('staffTableBody');
             
             if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No staff members found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">No staff members found</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = data.map(staff => `
-                <tr>
-                    <td><strong>${staff.email}</strong></td>
-                    <td>${staff.staff_profile?.department || '-'}</td>
-                    <td>${staff.staff_profile?.job_title || '-'}</td>
-                    <td><span class="status-badge status-${staff.status === 'active' ? 'active' : 'inactive'}">
-                        ${staff.status || 'Active'}
-                    </span></td>
-                    <td>${new Date(staff.created_at).toLocaleDateString()}</td>
-                    <td>
-                        <button class="btn btn-danger" onclick="deactivateStaff('${staff.id}')">Deactivate</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = data.map(staff => {
+                const rto = rtoProfiles.find(r => r.id === staff.rto_profile_id);
+                const isActive = staff.status === 'active' || staff.status === 'ACTIVE';
+                return `
+                    <tr>
+                        <td><strong>${staff.email}</strong></td>
+                        <td>${rto ? rto.name : '-'}</td>
+                        <td>${staff.staff_profile?.department || '-'}</td>
+                        <td>${staff.staff_profile?.job_title || '-'}</td>
+                        <td><span class="status-badge status-${isActive ? 'active' : 'inactive'}">
+                            ${staff.status || 'Active'}
+                        </span></td>
+                        <td>${staff.created_at ? new Date(staff.created_at).toLocaleDateString() : '-'}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick='editStaff(${JSON.stringify(staff)})' style="margin-right: 0.5rem;">Edit</button>
+                            ${isActive ? 
+                                `<button class="btn btn-danger" onclick="deactivateStaff('${staff.id}')">Deactivate</button>` :
+                                `<button class="btn btn-success" onclick="activateStaff('${staff.id}')">Activate</button>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         } catch (error) {
             console.error('Error loading staff:', error);
         }
@@ -102,26 +140,62 @@
 
     function openNewStaffModal() {
         document.getElementById('staffForm').reset();
+        document.getElementById('staffId').value = '';
+        document.getElementById('staffModalTitle').textContent = 'Add Staff Member';
+        document.getElementById('staffPassword').required = true;
+        document.getElementById('passwordGroup').querySelector('small').style.display = 'none';
+        openModal('staffModal');
+    }
+
+    function editStaff(staff) {
+        document.getElementById('staffId').value = staff.id;
+        document.getElementById('staffEmail').value = staff.email;
+        document.getElementById('staffPassword').value = '';
+        document.getElementById('staffPassword').required = false;
+        document.getElementById('passwordGroup').querySelector('small').style.display = 'block';
+        document.getElementById('staffDepartment').value = staff.staff_profile?.department || '';
+        document.getElementById('staffJobTitle').value = staff.staff_profile?.job_title || '';
+        document.getElementById('staffRto').value = staff.rto_profile_id || '';
+        document.getElementById('staffModalTitle').textContent = 'Edit Staff Member';
         openModal('staffModal');
     }
 
     async function handleStaffSubmit(event) {
         event.preventDefault();
         
+        const staffId = document.getElementById('staffId').value;
+        const isEdit = !!staffId;
+        
         const data = {
             email: document.getElementById('staffEmail').value,
-            password: document.getElementById('staffPassword').value,
             department: document.getElementById('staffDepartment').value || 'General',
             job_title: document.getElementById('staffJobTitle').value || null,
         };
 
+        // Add password only if provided (for create or password change)
+        const password = document.getElementById('staffPassword').value;
+        if (password) {
+            data.password = password;
+        }
+
+        // Add RTO profile ID if selected
+        const rtoId = document.getElementById('staffRto').value;
+        if (rtoId) {
+            data.rto_profile_id = rtoId;
+        }
+
         try {
-            await makeRequest('POST', '/admin/staff', data);
-            showAlert('Staff member created successfully', 'success');
+            if (isEdit) {
+                await makeRequest('PUT', `/admin/staff/${staffId}`, data);
+                showAlert('Staff member updated successfully', 'success');
+            } else {
+                await makeRequest('POST', '/admin/staff', data);
+                showAlert('Staff member created successfully', 'success');
+            }
             closeModal('staffModal');
             loadStaff();
         } catch (error) {
-            console.error('Error creating staff member:', error);
+            console.error('Error saving staff member:', error);
         }
     }
 
@@ -137,7 +211,22 @@
         }
     }
 
+    async function activateStaff(id) {
+        if (confirm('Are you sure you want to activate this staff member?')) {
+            try {
+                await makeRequest('PATCH', `/admin/staff/${id}/activate`);
+                showAlert('Staff member activated successfully', 'success');
+                loadStaff();
+            } catch (error) {
+                console.error('Error activating staff member:', error);
+            }
+        }
+    }
+
     // Load staff on page load
-    loadStaff();
+    window.addEventListener('DOMContentLoaded', async () => {
+        await loadRtoProfiles();
+        await loadStaff();
+    });
 </script>
 {% endblock %}

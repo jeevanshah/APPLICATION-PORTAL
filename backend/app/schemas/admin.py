@@ -59,7 +59,6 @@ class DocumentTypeResponse(BaseModel):
     is_mandatory: bool
     ocr_model_ref: Optional[str]
     display_order: int
-    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -74,6 +73,7 @@ class StaffCreateRequest(BaseModel):
     department: str = Field(default="General", max_length=100)
     job_title: Optional[str] = Field(None, max_length=100)
     permissions: Optional[dict] = Field(None, description="Permissions as JSON object")
+    rto_profile_id: Optional[UUID] = Field(None, description="RTO profile ID (defaults to admin's RTO if not provided)")
 
 
 class StaffResponse(BaseModel):
@@ -82,11 +82,54 @@ class StaffResponse(BaseModel):
     email: str
     role: str
     status: str
-    is_active: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class StaffUpdateRequest(BaseModel):
+    """Update staff member."""
+    email: Optional[EmailStr] = None
+    department: Optional[str] = Field(None, max_length=100)
+    job_title: Optional[str] = Field(None, max_length=100)
+    permissions: Optional[dict] = Field(None, description="Permissions as JSON object")
+    rto_profile_id: Optional[UUID] = None
+
+
+# ==================== AGENT SCHEMAS ====================
+
+class AgentCreateRequest(BaseModel):
+    """Create agent."""
+    email: EmailStr
+    password: str = Field(..., min_length=8, description="Min 8 characters")
+    organization_name: str = Field(..., min_length=1, max_length=200, description="Agent organization name")
+    contact_person: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=20)
+    rto_profile_id: Optional[UUID] = Field(None, description="RTO profile ID (defaults to admin's RTO if not provided)")
+
+
+class AgentResponse(BaseModel):
+    """Agent response."""
+    id: UUID
+    email: str
+    role: str
+    status: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AgentUpdateRequest(BaseModel):
+    """Update agent."""
+    email: Optional[EmailStr] = None
+    organization_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    contact_person: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=20)
+    rto_profile_id: Optional[UUID] = None
 
 
 # ==================== COURSE OFFERING SCHEMAS ====================
@@ -111,7 +154,7 @@ class CourseOfferingResponse(BaseModel):
     tuition_fee: float
     application_deadline: Optional[str]
     is_active: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

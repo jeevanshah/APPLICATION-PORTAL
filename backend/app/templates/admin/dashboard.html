@@ -13,48 +13,32 @@
 <div class="cards-grid">
     <div class="card">
         <h3>RTO Profiles</h3>
-        <div class="card-value">{{ rto_count }}</div>
+        <div class="card-value" id="rto-count">-</div>
         <div class="card-subtext">Active organizations</div>
     </div>
 
     <div class="card">
         <h3>Document Types</h3>
-        <div class="card-value">{{ doc_type_count }}</div>
+        <div class="card-value" id="doc-count">-</div>
         <div class="card-subtext">Configured document types</div>
     </div>
 
     <div class="card">
         <h3>Staff Members</h3>
-        <div class="card-value">{{ staff_count }}</div>
+        <div class="card-value" id="staff-count">-</div>
         <div class="card-subtext">Active staff accounts</div>
     </div>
 
     <div class="card">
         <h3>Courses</h3>
-        <div class="card-value">{{ course_count }}</div>
+        <div class="card-value" id="course-count">-</div>
         <div class="card-subtext">Available courses</div>
     </div>
 </div>
 
 <div class="card">
     <h3 style="color: #666; text-transform: uppercase; margin-bottom: 1rem;">System Status</h3>
-    {% if configured %}
-        <div style="padding: 1rem; background: #c6f6d5; border-left: 4px solid #38a169; border-radius: 4px;">
-            <strong style="color: #22543d;">✓ System Configured</strong>
-            <p style="color: #22543d; margin-top: 0.5rem;">All required configurations are in place.</p>
-        </div>
-    {% else %}
-        <div style="padding: 1rem; background: #fed7d7; border-left: 4px solid #c53030; border-radius: 4px;">
-            <strong style="color: #742a2a;">⚠ System Not Configured</strong>
-            <p style="color: #742a2a; margin-top: 0.5rem;">
-                Please configure:
-                {% if rto_count == 0 %}<br>• RTO Profiles{% endif %}
-                {% if doc_type_count == 0 %}<br>• Document Types{% endif %}
-                {% if staff_count == 0 %}<br>• Staff Members{% endif %}
-                {% if course_count == 0 %}<br>• Courses{% endif %}
-            </p>
-        </div>
-    {% endif %}
+    <div id="system-status">Loading...</div>
 </div>
 
 <div style="margin-top: 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
@@ -64,3 +48,51 @@
     <a href="/api/v1/admin-panel/courses" class="btn btn-primary" style="text-align: center;">Manage Courses</a>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadDashboard() {
+        try {
+            const status = await makeRequest('GET', '/admin/status');
+            
+            document.getElementById('rto-count').textContent = status.rto_profiles || 0;
+            document.getElementById('doc-count').textContent = status.document_types || 0;
+            document.getElementById('staff-count').textContent = status.staff_members || 0;
+            document.getElementById('course-count').textContent = status.courses || 0;
+            
+            const statusDiv = document.getElementById('system-status');
+            const configured = status.rto_profiles > 0 && status.document_types > 0 && 
+                             status.staff_members > 0 && status.courses > 0;
+            
+            if (configured) {
+                statusDiv.innerHTML = `
+                    <div style="padding: 1rem; background: #c6f6d5; border-left: 4px solid #38a169; border-radius: 4px;">
+                        <strong style="color: #22543d;">✓ System Configured</strong>
+                        <p style="color: #22543d; margin-top: 0.5rem;">All required configurations are in place.</p>
+                    </div>
+                `;
+            } else {
+                const missing = [];
+                if (status.rto_profiles === 0) missing.push('RTO Profiles');
+                if (status.document_types === 0) missing.push('Document Types');
+                if (status.staff_members === 0) missing.push('Staff Members');
+                if (status.courses === 0) missing.push('Courses');
+                
+                statusDiv.innerHTML = `
+                    <div style="padding: 1rem; background: #fed7d7; border-left: 4px solid #c53030; border-radius: 4px;">
+                        <strong style="color: #742a2a;">⚠ System Not Configured</strong>
+                        <p style="color: #742a2a; margin-top: 0.5rem;">
+                            Please configure:<br>• ${missing.join('<br>• ')}
+                        </p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Failed to load dashboard', error);
+        }
+    }
+    
+    window.addEventListener('DOMContentLoaded', loadDashboard);
+</script>
+{% endblock %}
+
