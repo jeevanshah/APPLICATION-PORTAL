@@ -186,22 +186,117 @@ class OCRService:
         """Extract fields from passport document."""
         data = {}
 
-        # Common passport patterns
-        patterns = {
-            'passport_number': r'(?:Passport|Pass\.|P)\s*(?:No\.?|Number|#)?\s*([A-Z0-9]{6,12})',
-            'given_name': r'Given\s+Names?\s*[:\-]?\s*([A-Z][A-Z\s]+)',
-            'family_name': r'(?:Surname|Family\s+Name)\s*[:\-]?\s*([A-Z][A-Z\s]+)',
-            'date_of_birth': r'(?:Date\s+of\s+Birth|DOB|Birth\s+Date|Birth|Date of Birth)\s*[:\-]?\s*(\d{1,2}[\s\-./]\w{3,9}[\s\-./]\d{2,4})',
-            'nationality': r'Nationality\s*[:\-]?\s*([A-Z][A-Z\s]+)',
-            'gender': r'(?:Sex|Gender)\s*[:\-]?\s*([MFmf])',
-            'country': r'(?:Issu|Country of Issue|Country)\s*[:\-]?\s*([A-Z]{2,})',
-            'country_of_birth': r'Place of Birth\s*[:\-]?\s*([A-Za-z\s]+)',
-        }
+        # Split text into lines for better structured parsing
+        lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
 
-        for field, pattern in patterns.items():
-            match = re.search(pattern, raw_text, re.IGNORECASE)
+        # Method 1: Try structured field extraction (label | value format)
+        for i, line in enumerate(lines):
+            line_upper = line.upper()
+            
+            # Pattern: "LABEL | VALUE" (bilingual passports often use this)
+            if '|' in line:
+                parts = line.split('|')
+                if len(parts) >= 2:
+                    value = parts[-1].strip()  # Take the last part as value
+                    
+                    if 'GIVEN' in line_upper and 'NAME' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['given_name'] = lines[i + 1].strip()
+                    elif 'SURNAME' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['family_name'] = lines[i + 1].strip()
+                    elif 'NATIONALITY' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['nationality'] = lines[i + 1].strip()
+                    elif 'PASSPORT' in line_upper and 'NO' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1] and len(lines[i + 1]) > 3:
+                            passport = lines[i + 1].strip()
+                            # Validate it looks like a passport number
+                            if re.match(r'^[A-Z0-9]{6,}$', passport):
+                                data['passport_number'] = passport
+                    elif 'SEX' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['gender'] = lines[i + 1].strip()
+                    elif 'DATE' in line_upper and 'BIRTH' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['date_of_birth'] = lines[i + 1].strip()
+                    elif 'DATE' in line_upper and 'ISSUE' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['date_of_issue'] = lines[i + 1].strip()
+                    elif 'DATE' in line_upper and 'EXPIRY' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['expiry_date'] = lines[i + 1].strip()
+                    elif 'COUNTRY' in line_upper and 'CODE' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['country'] = lines[i + 1].strip()
+                    elif 'PLACE' in line_upper and 'BIRTH' in line_upper:
+                        if i + 1 < len(lines) and '|' not in lines[i + 1]:
+                            data['country_of_birth'] = lines[i + 1].strip()
+
+        # Method 2: Extract from MRZ (Machine Readable Zone) at bottom
+        # MRZ format: P<COUNTRY_CODE><SURNAME><<FIRST_NAME><<<...
+        mrz_lines = [l for l in lines if l.startswith('P<')]
+        if mrz_lines:
+            mrz = mrz_lines[0]
+            # Extract country code (3 chars after P<)
+            if len(mrz) > 5:
+                data['country'] = mrz[2:5].strip('<')
+            
+            # Extract passport number from MRZ (first 9 chars after country code)
+            if len(mrz) > 14:
+                potential_passport = mrz[5:14].strip('<')
+                if re.match(r'^[A-Z0-9]{6,}$', potential_passport):
+                    data['passport_number'] = potential_passport
+            
+            # Try to extract names from MRZ
+            if '<<' in mrz:
+                name_part = mrz.split('<<')[1] if len(mrz.split('<<')) > 1 else ''
+                name_part = name_part.strip('<')
+                if '<' in name_part:
+                    parts = name_part.split('<')
+                    if parts[0] and 'family_name' not in data:
+                        data['family_name'] = parts[0]
+                    if len(parts) > 1 and parts[1] and 'given_name' not in data:
+                        data['given_name'] = parts[1]
+
+        # Method 3: Fallback regex patterns for unstructured data
+        if 'passport_number' not in data:
+            # Look for 6-9 alphanumeric character sequences
+            for potential in re.finditer(r'\b([A-Z][A-Z0-9]{5,8})\b', raw_text):
+                candidate = potential.group(1)
+                if not any(word in candidate for word in ['DATE', 'TYPE', 'ISSUE', 'EXPIRY']):
+                    data['passport_number'] = candidate
+                    break
+
+        if 'given_name' not in data:
+            match = re.search(r'(?:Given|First)\s+Names?\s*[:\-]?\s*([A-Z][A-Z\s]{2,})', raw_text, re.IGNORECASE)
             if match:
-                data[field] = match.group(1).strip()
+                name = match.group(1).strip()
+                if '\n' in name:
+                    name = name.split('\n')[0]
+                data['given_name'] = name
+
+        if 'family_name' not in data:
+            match = re.search(r'(?:Surname|Family\s+Name|Last\s+Name)\s*[:\-]?\s*([A-Z][A-Z\s]{2,})', raw_text, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                if '\n' in name:
+                    name = name.split('\n')[0]
+                data['family_name'] = name
+
+        if 'nationality' not in data:
+            match = re.search(r'Nationality\s*[:\-]?\s*([A-Z][A-Za-z\s]{2,})', raw_text, re.IGNORECASE)
+            if match:
+                nationality = match.group(1).strip()
+                if '\n' in nationality:
+                    nationality = nationality.split('\n')[0]
+                data['nationality'] = nationality
+
+        # Extract date components if full dates were found
+        if 'date_of_birth' in data and 'date_of_birth' not in data:
+            dob = data.get('date_of_birth', '')
+            if re.search(r'\d{1,2}\s+[A-Z]{3}\s+\d{4}', dob):
+                data['date_of_birth'] = dob
 
         return data
 
@@ -472,22 +567,96 @@ class OCRService:
         mappings = {}
 
         if document_type_code == 'PASSPORT':
+            # Handle given_name
             if 'given_name' in extracted_data:
-                mappings['personal_details.given_name'] = extracted_data['given_name'].title()
-            if 'surname' in extracted_data:
-                mappings['personal_details.family_name'] = extracted_data['surname'].title()
+                name = extracted_data['given_name'].strip()
+                # Remove extra text after name (e.g., "HRIDAYA\nUITPOCIT" -> "HRIDAYA")
+                name = name.split('\n')[0].split('|')[0].strip()
+                # Filter out label text that might be included
+                if not any(keyword in name.upper() for keyword in ['NATIONALITY', 'PERSONAL']):
+                    mappings['personal_details.given_name'] = name.title()
+            
+            # Handle family_name/surname
+            if 'family_name' in extracted_data:
+                name = extracted_data['family_name'].strip()
+                # Remove extra text (e.g., "LAMSAL SPECIMEN\nWITH" -> "LAMSAL SPECIMEN")
+                name = name.split('\n')[0].split('|')[0].strip()
+                # Filter out label text
+                if not any(keyword in name.upper() for keyword in ['WITH', 'GIVEN', 'NAMES']):
+                    mappings['personal_details.family_name'] = name.title()
+            elif 'surname' in extracted_data:
+                name = extracted_data['surname'].strip()
+                name = name.split('\n')[0].split('|')[0].strip()
+                mappings['personal_details.family_name'] = name.title()
+            
+            # Handle passport_number
             if 'passport_number' in extracted_data:
-                mappings['personal_details.passport_number'] = extracted_data['passport_number']
+                passport = extracted_data['passport_number'].strip()
+                # Extract valid passport number (usually alphanumeric, 6-12 chars)
+                passport = re.sub(r'[^A-Z0-9]', '', passport.upper())[:12]
+                if len(passport) >= 6:
+                    mappings['personal_details.passport_number'] = passport
+            
+            # Handle nationality
             if 'nationality' in extracted_data:
-                mappings['personal_details.nationality'] = extracted_data['nationality'].title(
-                )
+                nationality = extracted_data['nationality'].strip()
+                nationality = nationality.split('\n')[0].split('|')[0].strip()
+                # Filter out garbage text
+                if len(nationality) > 2 and not any(char.isdigit() for char in nationality[:3]):
+                    # Convert common country adjectives to country names
+                    nationality_map = {
+                        'NEPALI': 'Nepalese',
+                        'NEPAL': 'Nepal',
+                        'AUSTRALIAN': 'Australian',
+                        'INDIAN': 'Indian',
+                        'CHINESE': 'Chinese',
+                    }
+                    mapped = nationality_map.get(nationality.upper(), nationality.title())
+                    mappings['personal_details.nationality'] = mapped
+            
+            # Handle date_of_birth
             if 'date_of_birth' in extracted_data:
-                # Would need date parsing here
-                mappings['personal_details.date_of_birth'] = extracted_data['date_of_birth']
-            if 'sex' in extracted_data:
-                gender_map = {'M': 'Male', 'F': 'Female'}
-                mappings['personal_details.gender'] = gender_map.get(
-                    extracted_data['sex'], extracted_data['sex'])
+                dob = extracted_data['date_of_birth'].strip()
+                mappings['personal_details.date_of_birth'] = dob
+            
+            # Handle gender/sex
+            if 'gender' in extracted_data:
+                gender = extracted_data['gender'].strip().upper()
+                if gender:
+                    gender_map = {'M': 'Male', 'F': 'Female', 'MALE': 'Male', 'FEMALE': 'Female'}
+                    mappings['personal_details.gender'] = gender_map.get(gender, gender)
+            
+            # Handle country (country of origin/issue)
+            if 'country' in extracted_data:
+                country = extracted_data['country'].strip()
+                # Convert country code to country name if needed
+                country_code_map = {
+                    'NPL': 'Nepal', 'AUS': 'Australia', 'IND': 'India', 'CHN': 'China',
+                    'US': 'United States', 'GBR': 'United Kingdom', 'CAN': 'Canada'
+                }
+                country_name = country_code_map.get(country.upper(), country)
+                if country_name:
+                    mappings['personal_details.country'] = country_name.title()
+            
+            # Handle country_of_birth / place_of_birth
+            if 'country_of_birth' in extracted_data:
+                cob = extracted_data['country_of_birth'].strip()
+                cob = cob.split('\n')[0].split('|')[0].strip()
+                if len(cob) > 2:
+                    mappings['personal_details.country_of_birth'] = cob.title()
+            
+            # Handle expiry_date / passport_expiry
+            if 'expiry_date' in extracted_data:
+                mappings['personal_details.passport_expiry'] = extracted_data['expiry_date'].strip()
+            elif 'passport_expiry' in extracted_data:
+                mappings['personal_details.passport_expiry'] = extracted_data['passport_expiry'].strip()
+            
+            # Handle date_of_issue
+            if 'date_of_issue' in extracted_data:
+                doi = extracted_data['date_of_issue'].strip()
+                # Only map if it looks like a date, not a single letter (OCR error)
+                if len(doi) > 3 and any(char.isdigit() for char in doi):
+                    mappings['personal_details.passport_issue_date'] = doi
 
         elif document_type_code == 'TRANSCRIPT':
             if 'institution' in extracted_data:
