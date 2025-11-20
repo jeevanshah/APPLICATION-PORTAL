@@ -1,0 +1,243 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Campuses - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Campuses</h2>
+    <p>Manage campus locations and facilities</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="btn-group">
+    <button class="btn btn-primary" onclick="openNewCampusModal()">+ Add Campus</button>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Code</th>
+                <th>City</th>
+                <th>Contact Email</th>
+                <th>Contact Phone</th>
+                <th>Max Students</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="campusTableBody">
+            <tr><td colspan="8" style="text-align: center; padding: 2rem;"><div class="loading"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add/Edit Campus Modal -->
+<div class="modal" id="campusModal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 id="campusModalTitle">Add Campus</h3>
+        </div>
+        <form id="campusForm" onsubmit="handleCampusSubmit(event)">
+            <input type="hidden" id="campusId">
+            
+            <div class="form-group">
+                <label for="campusName">Campus Name *</label>
+                <input type="text" id="campusName" placeholder="e.g., Sydney Campus" required>
+            </div>
+
+            <div class="form-group">
+                <label for="campusCode">Campus Code *</label>
+                <input type="text" id="campusCode" placeholder="e.g., SYD" maxlength="10" required>
+            </div>
+
+            <div class="form-group">
+                <label for="contactEmail">Contact Email *</label>
+                <input type="email" id="contactEmail" placeholder="e.g., admissions@churchill.nsw.edu.au" required>
+            </div>
+
+            <div class="form-group">
+                <label for="contactPhone">Contact Phone *</label>
+                <input type="tel" id="contactPhone" placeholder="e.g., 0288562997" required>
+            </div>
+
+            <div class="form-group">
+                <label for="maxStudents">Maximum Students *</label>
+                <input type="number" id="maxStudents" placeholder="e.g., 500" min="1" required>
+            </div>
+
+            <div style="border-top: 1px solid #e0e0e0; padding-top: 1rem; margin-top: 1rem;">
+                <h4 style="margin-bottom: 1rem; font-size: 1.1rem;">Address Details</h4>
+                
+                <div class="form-group">
+                    <label for="addressStreet">Street Address *</label>
+                    <input type="text" id="addressStreet" placeholder="e.g., Level 1 & 7, 16-18 Wentworth Street" required>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="addressCity">City *</label>
+                        <input type="text" id="addressCity" placeholder="e.g., Parramatta" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="addressState">State *</label>
+                        <input type="text" id="addressState" placeholder="e.g., NSW" required>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="addressPostcode">Postcode *</label>
+                        <input type="text" id="addressPostcode" placeholder="e.g., 2150" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="addressCountry">Country *</label>
+                        <input type="text" id="addressCountry" placeholder="e.g., Australia" value="Australia" required>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('campusModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Campus</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadCampuses() {
+        try {
+            const data = await makeRequest('GET', '/admin/campuses');
+            const tbody = document.getElementById('campusTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;">No campuses found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(campus => {
+                const city = campus.address?.city || '-';
+                const state = campus.address?.state || '';
+                const location = state ? `${city}, ${state}` : city;
+                
+                return `
+                    <tr>
+                        <td><strong>${campus.name}</strong></td>
+                        <td><span style="font-family: monospace; background: #f0f0f0; padding: 0.25rem 0.5rem; border-radius: 4px;">${campus.code}</span></td>
+                        <td>${location}</td>
+                        <td>${campus.contact_email}</td>
+                        <td>${campus.contact_phone}</td>
+                        <td style="text-align: center;">${campus.max_students}</td>
+                        <td><span class="status-badge status-${campus.is_active ? 'active' : 'inactive'}">
+                            ${campus.is_active ? 'Active' : 'Inactive'}
+                        </span></td>
+                        <td>
+                            <button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="editCampus('${campus.id}')">Edit</button>
+                            <button class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="deleteCampus('${campus.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading campuses:', error);
+            const tbody = document.getElementById('campusTableBody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #f56565;">Error loading campuses. Please try again.</td></tr>';
+        }
+    }
+
+    function openNewCampusModal() {
+        document.getElementById('campusId').value = '';
+        document.getElementById('campusForm').reset();
+        document.getElementById('addressCountry').value = 'Australia'; // Set default
+        document.getElementById('campusModalTitle').textContent = 'Add Campus';
+        openModal('campusModal');
+    }
+
+    async function handleCampusSubmit(event) {
+        event.preventDefault();
+        
+        const campusId = document.getElementById('campusId').value;
+        const data = {
+            name: document.getElementById('campusName').value,
+            code: document.getElementById('campusCode').value.toUpperCase(),
+            contact_email: document.getElementById('contactEmail').value,
+            contact_phone: document.getElementById('contactPhone').value,
+            max_students: parseInt(document.getElementById('maxStudents').value),
+            address: {
+                street: document.getElementById('addressStreet').value,
+                city: document.getElementById('addressCity').value,
+                state: document.getElementById('addressState').value,
+                postcode: document.getElementById('addressPostcode').value,
+                country: document.getElementById('addressCountry').value
+            }
+        };
+
+        try {
+            if (campusId) {
+                await makeRequest('PATCH', `/admin/campuses/${campusId}`, data);
+                showAlert('Campus updated successfully', 'success');
+            } else {
+                await makeRequest('POST', '/admin/campuses', data);
+                showAlert('Campus created successfully', 'success');
+            }
+            closeModal('campusModal');
+            loadCampuses();
+        } catch (error) {
+            console.error('Error saving campus:', error);
+            showAlert(error.message || 'Error saving campus', 'error');
+        }
+    }
+
+    async function editCampus(id) {
+        try {
+            const campus = await makeRequest('GET', `/admin/campuses/${id}`);
+            
+            document.getElementById('campusId').value = campus.id;
+            document.getElementById('campusName').value = campus.name;
+            document.getElementById('campusCode').value = campus.code;
+            document.getElementById('contactEmail').value = campus.contact_email;
+            document.getElementById('contactPhone').value = campus.contact_phone;
+            document.getElementById('maxStudents').value = campus.max_students;
+            
+            // Address fields
+            if (campus.address) {
+                document.getElementById('addressStreet').value = campus.address.street || '';
+                document.getElementById('addressCity').value = campus.address.city || '';
+                document.getElementById('addressState').value = campus.address.state || '';
+                document.getElementById('addressPostcode').value = campus.address.postcode || '';
+                document.getElementById('addressCountry').value = campus.address.country || 'Australia';
+            }
+            
+            document.getElementById('campusModalTitle').textContent = 'Edit Campus';
+            openModal('campusModal');
+        } catch (error) {
+            console.error('Error loading campus:', error);
+            showAlert('Error loading campus details', 'error');
+        }
+    }
+
+    async function deleteCampus(id) {
+        if (confirm('Are you sure you want to delete this campus? This will not affect existing courses linked to this campus.')) {
+            try {
+                await makeRequest('DELETE', `/admin/campuses/${id}`);
+                showAlert('Campus deleted successfully', 'success');
+                loadCampuses();
+            } catch (error) {
+                console.error('Error deleting campus:', error);
+                showAlert('Error deleting campus', 'error');
+            }
+        }
+    }
+
+    // Load campuses on page load
+    loadCampuses();
+</script>
+{% endblock %}

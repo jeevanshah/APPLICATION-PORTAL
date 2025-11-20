@@ -64,18 +64,6 @@ class OCRStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class TimelineEntryType(str, enum.Enum):
-    """Timeline entry categories."""
-    APPLICATION_CREATED = "application_created"
-    STAGE_CHANGED = "stage_changed"
-    DOCUMENT_UPLOADED = "document_uploaded"
-    DOCUMENT_VERIFIED = "document_verified"
-    COMMENT_ADDED = "comment_added"
-    ASSIGNED = "assigned"
-    EMAIL_SENT = "email_sent"
-    SYSTEM_EVENT = "system_event"
-
-
 # ============================================================================
 # MODELS
 # ============================================================================
@@ -114,9 +102,57 @@ class RtoProfile(Base):
 
     # Relationships
     users = relationship("UserAccount", back_populates="rto_profile")
+    courses = relationship("CourseOffering", back_populates="rto_profile")
+    campuses = relationship("Campus", back_populates="rto_profile", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<RtoProfile(id={self.id}, name='{self.name}')>"
+
+
+class Campus(Base):
+    """
+    Campus/Branch location for an RTO.
+    Each RTO can have multiple campuses.
+    """
+    __tablename__ = "campus"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    rto_profile_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("rto_profile.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    
+    name = Column(String(255), nullable=False)  # "Sydney Campus"
+    code = Column(String(20), nullable=True)  # "SYD", "MEL"
+    
+    # Contact details
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    
+    # Address as JSONB: {street, city, state, postcode, country}
+    address = Column(JSONB, nullable=True)
+    
+    # Capacity and settings
+    max_students = Column(Integer, nullable=True)  # Maximum student capacity
+    
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+    deleted_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    rto_profile = relationship("RtoProfile", back_populates="campuses")
+    course_offerings = relationship("CourseOffering", back_populates="campus")
+
+    def __repr__(self):
+        return f"<Campus(id={self.id}, name='{self.name}', code='{self.code}')>"
 
 
 class UserAccount(Base):
@@ -181,11 +217,11 @@ class UserAccount(Base):
         foreign_keys="Document.uploaded_by",
         back_populates="uploader")
 
-    # Timeline entries created by this user
-    timeline_entries = relationship(
-        "TimelineEntry",
-        foreign_keys="TimelineEntry.actor_id",
-        back_populates="actor")
+    # Comments created by this user
+    comments = relationship(
+        "Comment",
+        foreign_keys="Comment.author_id",
+        back_populates="author")
 
     # Audit logs
     audit_logs = relationship("AuditLog", back_populates="actor")
@@ -298,10 +334,23 @@ class CourseOffering(Base):
     __tablename__ = "course_offering"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    rto_profile_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("rto_profile.id"),
+        nullable=False,
+        index=True
+    )
+    campus_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("campus.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    
     course_code = Column(String(50), unique=True, nullable=False, index=True)
     course_name = Column(String(255), nullable=False)
     intake = Column(String(50), nullable=False)  # e.g., "2025 Semester 1"
-    campus = Column(String(100), nullable=False)
+    campus = Column(String(100), nullable=True)  # DEPRECATED: Use campus_id instead
     tuition_fee = Column(Numeric(10, 2), nullable=False)
     application_deadline = Column(Date, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
@@ -310,12 +359,12 @@ class CourseOffering(Base):
     deleted_at = Column(DateTime, nullable=True)
 
     # Relationships
+    rto_profile = relationship("RtoProfile", back_populates="courses")
+    campus = relationship("Campus", back_populates="course_offerings")
     applications = relationship("Application", back_populates="course")
 
     def __repr__(self):
-        return f"<CourseOffering(code='{
-            self.course_code}', name='{
-            self.course_name}')>"
+        return f"<CourseOffering(code='{self.course_code}', name='{self.course_name}')>"
 
 
 class Application(Base):
@@ -415,8 +464,8 @@ class Application(Base):
         "ApplicationStageHistory",
         back_populates="application")
     documents = relationship("Document", back_populates="application")
-    timeline_entries = relationship(
-        "TimelineEntry", back_populates="application")
+    comments = relationship(
+        "Comment", back_populates="application")
 
     def __repr__(self):
         return f"<Application(id={self.id}, stage={self.current_stage.value})>"
@@ -606,8 +655,8 @@ class Document(Base):
         "DocumentVersion",
         back_populates="document",
         order_by="DocumentVersion.version_number")
-    timeline_entries = relationship(
-        "TimelineEntry",
+    comments = relationship(
+        "Comment",
         back_populates="linked_document")
 
     def __repr__(self):
@@ -659,12 +708,21 @@ class DocumentVersion(Base):
             self.version_number})>"
 
 
-class TimelineEntry(Base):
+class Comment(Base):
     """
-    Application activity timeline (user-facing feed).
-    Consolidates workflow events with event_payload JSONB.
+    Application comments and communication system.
+    
+    Unlike ApplicationStageHistory (stage tracking) and AuditLog (compliance),
+    this table is for HUMAN COMMUNICATION:
+    - Staff internal notes
+    - Agent questions/updates
+    - Student messages
+    - Threaded conversations
+    - @mentions and reactions
+    
+    Think: Slack/Teams messages for each application.
     """
-    __tablename__ = "timeline_entry"
+    __tablename__ = "comment"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     application_id = Column(
@@ -674,60 +732,95 @@ class TimelineEntry(Base):
         nullable=False,
         index=True)
 
-    entry_type = Column(SQLEnum(TimelineEntryType), nullable=False)
-    actor_id = Column(
+    # Who posted this comment
+    author_id = Column(
         UUID(
             as_uuid=True),
         ForeignKey("user_account.id"),
-        nullable=True)
-    actor_role = Column(SQLEnum(UserRole), nullable=True)
-    message = Column(Text, nullable=False)
-
-    # Optional references
-    stage = Column(SQLEnum(ApplicationStage), nullable=True)
+        nullable=False)  # Required for comments
+    author_role = Column(SQLEnum(UserRole), nullable=False)
+    
+    # Comment content
+    content = Column(Text, nullable=False)
+    
+    # Threaded conversations
+    parent_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("comment.id"),
+        nullable=True,
+        index=True)  # NULL = top-level comment, UUID = reply to another comment
+    
+    # Visibility control
+    is_internal = Column(
+        Boolean,
+        nullable=False,
+        default=False)  # True = staff-only, False = visible to student/agent
+    
+    # Edit tracking
+    is_edited = Column(Boolean, nullable=False, default=False)
+    edited_at = Column(DateTime, nullable=True)
+    
+    # Optional document reference (e.g., "Regarding your passport upload...")
     linked_document_id = Column(
         UUID(
             as_uuid=True),
         ForeignKey("document.id"),
         nullable=True)
-
-    # JSONB field (replaces WORKFLOW_EVENT table)
-    # {event_type, metadata, triggered_by}
-    event_payload = Column(JSONB, nullable=True)
-    correlation_id = Column(
-        String(100),
-        nullable=True,
-        index=True)  # For grouping related events
+    
+    # JSONB fields for rich features
+    # {mentions: [user_ids], attachments: [{name, url, type}], formatting: {bold_ranges, italic_ranges}}
+    content_metadata = Column(JSONB, nullable=True)
+    
+    # {👍: [user_ids], ❤️: [user_ids], 😊: [user_ids], ...}
+    reactions = Column(JSONB, nullable=True)
+    
+    # [user_ids who have read this comment]
+    read_by = Column(JSONB, nullable=True)
+    
+    # [{edited_at, old_message, edited_by_id}]
+    edit_history = Column(JSONB, nullable=True)
 
     created_at = Column(
         DateTime,
         nullable=False,
         default=datetime.utcnow,
         index=True)
-    # Pin important entries to top
+    
+    # Pin important comments to top of thread
     is_pinned = Column(Boolean, nullable=False, default=False)
 
     # Relationships
     application = relationship(
         "Application",
-        back_populates="timeline_entries")
-    actor = relationship(
+        back_populates="comments")
+    author = relationship(
         "UserAccount",
-        foreign_keys=[actor_id],
-        back_populates="timeline_entries")
+        foreign_keys=[author_id],
+        back_populates="comments")
     linked_document = relationship(
-        "Document", back_populates="timeline_entries")
+        "Document", back_populates="comments")
+    
+    # Self-referential relationship for threaded comments
+    replies = relationship(
+        "Comment",
+        backref="parent",
+        remote_side=[id],
+        foreign_keys=[parent_id])
 
     def __repr__(self):
-        return f"<TimelineEntry(app={
-            self.application_id}, type={
-            self.entry_type.value})>"
+        return f"<Comment(app={
+            self.application_id}, author={
+            self.author_id})>"
 
 
-# GIN index for JSONB field in TIMELINE_ENTRY
+# GIN indexes for JSONB fields in COMMENT
 Index(
-    "idx_timeline_event_payload",
-    TimelineEntry.event_payload,
+    "idx_comment_content_metadata",
+    Comment.content_metadata,
+    postgresql_using="gin")
+Index(
+    "idx_comment_reactions",
+    Comment.reactions,
     postgresql_using="gin")
 
 

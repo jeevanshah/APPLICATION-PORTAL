@@ -60,7 +60,9 @@
 
             <div class="form-group">
                 <label for="courseCampus">Campus *</label>
-                <input type="text" id="courseCampus" placeholder="e.g., Sydney CBD" required>
+                <select id="courseCampus" required>
+                    <option value="">Select a campus...</option>
+                </select>
             </div>
 
             <div class="form-group">
@@ -85,7 +87,33 @@
 
 {% block scripts %}
 <script>
-    async function loadCourses() {
+    let campusesCache = [];
+
+    async function loadCampuses() {
+        try {
+            campusesCache = await makeRequest('GET', '/admin/campuses');
+            updateCampusDropdown();
+        } catch (error) {
+            console.error('Error loading campuses:', error);
+        }
+    }
+
+    function updateCampusDropdown() {
+        const select = document.getElementById('courseCampus');
+        const currentValue = select.value;
+        
+        select.innerHTML = '<option value="">Select a campus...</option>' + 
+            campusesCache
+                .filter(c => c.is_active)
+                .map(campus => `<option value="${campus.id}">${campus.name} (${campus.code})</option>`)
+                .join('');
+        
+        if (currentValue) {
+            select.value = currentValue;
+        }
+    }
+
+    async function loadCoursesTable() {
         try {
             const data = await makeRequest('GET', '/admin/courses');
             const tbody = document.getElementById('courseTableBody');
@@ -95,23 +123,27 @@
                 return;
             }
 
-            tbody.innerHTML = data.map(course => `
-                <tr>
-                    <td><strong>${course.course_code}</strong></td>
-                    <td>${course.course_name}</td>
-                    <td>${course.intake}</td>
-                    <td>${course.campus}</td>
-                    <td>$${ parseFloat(course.tuition_fee).toLocaleString('en-AU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) }</td>
-                    <td>${course.application_deadline ? new Date(course.application_deadline).toLocaleDateString() : '-'}</td>
-                    <td><span class="status-badge status-${course.is_active ? 'active' : 'inactive'}">
-                        ${course.is_active ? 'Active' : 'Inactive'}
-                    </span></td>
-                    <td>
-                        <button class="btn btn-secondary" onclick="editCourse('${course.id}')">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteCourse('${course.id}')">Delete</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = data.map(course => {
+                const campusName = course.campus?.name || course.campus || '-';
+                
+                return `
+                    <tr>
+                        <td><strong>${course.course_code}</strong></td>
+                        <td>${course.course_name}</td>
+                        <td>${course.intake}</td>
+                        <td>${campusName}</td>
+                        <td>$${ parseFloat(course.tuition_fee).toLocaleString('en-AU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) }</td>
+                        <td>${course.application_deadline ? new Date(course.application_deadline).toLocaleDateString() : '-'}</td>
+                        <td><span class="status-badge status-${course.is_active ? 'active' : 'inactive'}">
+                            ${course.is_active ? 'Active' : 'Inactive'}
+                        </span></td>
+                        <td>
+                            <button class="btn btn-secondary" onclick="editCourse('${course.id}')">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteCourse('${course.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         } catch (error) {
             console.error('Error loading courses:', error);
         }
@@ -121,6 +153,7 @@
         document.getElementById('courseId').value = '';
         document.getElementById('courseForm').reset();
         document.getElementById('courseModalTitle').textContent = 'Add Course';
+        updateCampusDropdown();
         openModal('courseModal');
     }
 
@@ -132,7 +165,7 @@
             course_code: document.getElementById('courseCode').value,
             course_name: document.getElementById('courseName').value,
             intake: document.getElementById('courseIntake').value,
-            campus: document.getElementById('courseCampus').value,
+            campus_id: document.getElementById('courseCampus').value || null,
             tuition_fee: parseFloat(document.getElementById('courseFee').value),
             application_deadline: document.getElementById('courseDeadline').value || null,
         };
@@ -146,7 +179,7 @@
                 showAlert('Course created successfully', 'success');
             }
             closeModal('courseModal');
-            loadCourses();
+            loadCoursesTable();
         } catch (error) {
             console.error('Error saving course:', error);
         }
@@ -160,9 +193,12 @@
             document.getElementById('courseCode').value = course.course_code;
             document.getElementById('courseName').value = course.course_name;
             document.getElementById('courseIntake').value = course.intake;
-            document.getElementById('courseCampus').value = course.campus;
             document.getElementById('courseFee').value = course.tuition_fee;
             document.getElementById('courseDeadline').value = course.application_deadline ? course.application_deadline.split('T')[0] : '';
+            
+            // Set campus dropdown
+            updateCampusDropdown();
+            document.getElementById('courseCampus').value = course.campus_id || '';
             
             document.getElementById('courseModalTitle').textContent = 'Edit Course';
             openModal('courseModal');
@@ -176,14 +212,19 @@
             try {
                 await makeRequest('DELETE', `/admin/courses/${id}`);
                 showAlert('Course deleted successfully', 'success');
-                loadCourses();
+                loadCoursesTable();
             } catch (error) {
                 console.error('Error deleting course:', error);
             }
         }
     }
 
-    // Load courses on page load
-    loadCourses();
+    // Load campuses and courses on page load
+    async function initializePage() {
+        await loadCampuses();
+        loadCoursesTable();
+    }
+    
+    initializePage();
 </script>
 {% endblock %}

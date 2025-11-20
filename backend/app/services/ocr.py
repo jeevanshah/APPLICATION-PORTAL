@@ -1,6 +1,7 @@
 """
-OCR Service for document text extraction using Microsoft Azure Computer Vision.
+OCR Service for document text extraction using Microsoft Azure AI Document Intelligence.
 Handles passport, transcript, and certificate recognition with field extraction.
+Uses prebuilt-idDocument model for passports and Computer Vision Read API for other documents.
 """
 import hashlib
 import re
@@ -32,13 +33,21 @@ class OCRService:
     """Service for optical character recognition and data extraction."""
 
     def __init__(self):
-        """Initialize OCR service with Azure credentials."""
-        self.endpoint = getattr(settings, 'AZURE_VISION_ENDPOINT', None)
-        self.key = getattr(settings, 'AZURE_VISION_KEY', None)
+        """Initialize OCR service with Azure Document Intelligence credentials."""
+        # Use Document Intelligence for all OCR (has both specialized models + general Read)
+        self.form_recognizer_endpoint = getattr(settings, 'AZURE_FORM_RECOGNIZER_ENDPOINT', None)
+        self.form_recognizer_key = getattr(settings, 'AZURE_FORM_RECOGNIZER_KEY', None)
+        
+        # Fallback to vision credentials if form recognizer not configured (backwards compatibility)
+        self.endpoint = self.form_recognizer_endpoint or getattr(settings, 'AZURE_VISION_ENDPOINT', None)
+        self.key = self.form_recognizer_key or getattr(settings, 'AZURE_VISION_KEY', None)
+        
         self.available = self.endpoint is not None and self.key is not None
 
         if not self.available:
-            print("Warning: Azure Vision credentials not configured. OCR features will be mocked.")
+            print("Warning: Azure Document Intelligence credentials not configured. OCR features will be mocked.")
+        else:
+            print(f"OCR Service initialized with endpoint: {self.endpoint}")
 
     def is_available(self) -> bool:
         """Check if OCR service is configured and available."""
@@ -72,30 +81,12 @@ class OCRService:
             with open(file_path, 'rb') as f:
                 image_data = f.read()
 
-            # Call Azure Computer Vision Read API
-            raw_text, raw_result = self._call_azure_vision_api(image_data)
-
-            if not raw_text:
-                # If Azure fails, fall back to mock
-                return self._mock_ocr_extraction(file_path, document_type_code)
-
-            # Extract structured data based on document type
-            extracted_data = self._extract_structured_data(
-                raw_text,
-                document_type_code
-            )
-
-            # Calculate confidence scores
-            confidence_scores = self._calculate_confidence(extracted_data)
-
-            return {
-                "raw_text": raw_text,
-                "extracted_data": extracted_data,
-                "confidence_scores": confidence_scores,
-                "processing_time_ms": 0,
-                "engine": "azure_computer_vision",
-                "raw_result": raw_result
-            }
+            # Use specialized prebuilt models for passports/IDs
+            if document_type_code in ['PASSPORT', 'ID_CARD', 'DRIVERS_LICENSE']:
+                return await self._extract_with_document_intelligence_id(image_data, document_type_code)
+            
+            # Use Document Intelligence Read model for all other documents
+            return await self._extract_with_document_intelligence_read(image_data, document_type_code)
 
         except Exception as e:
             print(f"OCR extraction failed: {str(e)}")
@@ -119,6 +110,353 @@ class OCRService:
             raise OCRProcessingError("No Operation-Location returned from Azure Vision API")
 
         # Poll for results
+        result = self._poll_azure_vision_api(operation_url)
+
+        # Extract text from result
+        raw_text = ""
+        if result.get("status") == "succeeded" and "analyzeResult" in result:
+            for page in result["analyzeResult"].get("readResults", []):
+                for line in page.get("lines", []):
+                    raw_text += line.get("text", "") + "\n"
+
+        return raw_text, result
+
+    async def _extract_with_document_intelligence_id(
+        self, 
+        image_bytes: bytes, 
+        document_type_code: str
+    ) -> Dict[str, Any]:
+        """
+        Extract structured data using Azure AI Document Intelligence prebuilt-idDocument model.
+        
+        Args:
+            image_bytes: Image file bytes
+            document_type_code: Type of document (PASSPORT, ID_CARD, etc.)
+            
+        Returns:
+            Dictionary with extracted data, confidence scores, and raw text
+        """
+        try:
+            # Submit document for analysis
+            url = f"{self.endpoint.rstrip('/')}/formrecognizer/documentModels/prebuilt-idDocument:analyze?api-version=2023-07-31"
+            headers = {
+                "Ocp-Apim-Subscription-Key": self.key,
+                "Content-Type": "application/octet-stream",
+            }
+            
+            response = requests.post(url, headers=headers, data=image_bytes, timeout=30)
+            response.raise_for_status()
+            
+            # Get operation location for polling
+            operation_url = response.headers.get("Operation-Location")
+            if not operation_url:
+                raise OCRProcessingError("No Operation-Location returned from Document Intelligence")
+            
+            # Poll for results
+            result = self._poll_document_intelligence(operation_url)
+            
+            # Extract structured fields from Document Intelligence response
+            extracted_data = self._parse_document_intelligence_result(result, document_type_code)
+            
+            # Build raw text from all content
+            raw_text = ""
+            if "analyzeResult" in result and "content" in result["analyzeResult"]:
+                raw_text = result["analyzeResult"]["content"]
+            
+            # Extract confidence scores
+            confidence_scores = self._extract_confidence_from_di(result)
+            
+            return {
+                "raw_text": raw_text,
+                "extracted_data": extracted_data,
+                "confidence_scores": confidence_scores,
+                "processing_time_ms": 0,
+                "engine": "azure_document_intelligence",
+                "raw_result": result
+            }
+            
+        except Exception as e:
+            print(f"Document Intelligence ID model extraction failed: {str(e)}")
+            print(f"Falling back to Document Intelligence Read model")
+            # Fallback to Read model instead of Computer Vision
+            return await self._extract_with_document_intelligence_read(image_bytes, document_type_code)
+
+    async def _extract_with_document_intelligence_read(
+        self, 
+        image_bytes: bytes, 
+        document_type_code: str
+    ) -> Dict[str, Any]:
+        """
+        Extract text using Azure AI Document Intelligence Read model (general OCR).
+        
+        Args:
+            image_bytes: Image file bytes
+            document_type_code: Type of document (for structured extraction)
+            
+        Returns:
+            Dictionary with extracted data, confidence scores, and raw text
+        """
+        try:
+            # Submit document for analysis with Read model
+            url = f"{self.endpoint.rstrip('/')}/formrecognizer/documentModels/prebuilt-read:analyze?api-version=2023-07-31"
+            headers = {
+                "Ocp-Apim-Subscription-Key": self.key,
+                "Content-Type": "application/octet-stream",
+            }
+            
+            response = requests.post(url, headers=headers, data=image_bytes, timeout=30)
+            response.raise_for_status()
+            
+            # Get operation location for polling
+            operation_url = response.headers.get("Operation-Location")
+            if not operation_url:
+                raise OCRProcessingError("No Operation-Location returned from Document Intelligence Read API")
+            
+            # Poll for results
+            result = self._poll_document_intelligence(operation_url)
+            
+            # Extract text from result
+            raw_text = ""
+            if "analyzeResult" in result and "content" in result["analyzeResult"]:
+                raw_text = result["analyzeResult"]["content"]
+            
+            # Extract structured data based on document type
+            extracted_data = self._extract_structured_data(raw_text, document_type_code)
+            
+            # Calculate confidence scores
+            confidence_scores = self._calculate_confidence(extracted_data)
+            
+            return {
+                "raw_text": raw_text,
+                "extracted_data": extracted_data,
+                "confidence_scores": confidence_scores,
+                "processing_time_ms": 0,
+                "engine": "azure_document_intelligence_read",
+                "raw_result": result
+            }
+            
+        except Exception as e:
+            print(f"Document Intelligence Read model extraction failed: {str(e)}")
+            # Final fallback to mock
+            print(f"Falling back to mock OCR data")
+            # Create a simple mock result instead of calling missing method
+            return {
+                "raw_text": "",
+                "extracted_data": {},
+                "confidence_scores": {},
+                "processing_time_ms": 0,
+                "engine": "mock_fallback",
+                "raw_result": {}
+            }
+
+    def _poll_document_intelligence(self, operation_url: str, max_retries: int = 60) -> Dict[str, Any]:
+        """Poll Document Intelligence API for operation result."""
+        headers = {
+            "Ocp-Apim-Subscription-Key": self.key,
+        }
+        
+        for attempt in range(max_retries):
+            response = requests.get(operation_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            result = response.json()
+            status = result.get("status", "").lower()
+            
+            if status == "succeeded":
+                return result
+            elif status == "failed":
+                error = result.get("error", {})
+                raise OCRProcessingError(f"Document Intelligence failed: {error.get('message', 'Unknown error')}")
+            
+            # Wait before retrying
+            if attempt < max_retries - 1:
+                time.sleep(1)
+        
+        raise OCRProcessingError(f"Document Intelligence operation did not complete after {max_retries} retries")
+
+    def _parse_document_intelligence_result(
+        self, 
+        result: Dict[str, Any], 
+        document_type_code: str
+    ) -> Dict[str, Any]:
+        """
+        Parse Document Intelligence result to extract structured fields.
+        
+        Args:
+            result: Full API response from Document Intelligence
+            document_type_code: Type of document
+            
+        Returns:
+            Dictionary of extracted fields
+        """
+        extracted_data = {}
+        
+        try:
+            analyze_result = result.get("analyzeResult", {})
+            documents = analyze_result.get("documents", [])
+            
+            if not documents:
+                return extracted_data
+            
+            # Get the first document (usually only one for ID documents)
+            doc = documents[0]
+            fields = doc.get("fields", {})
+            
+            # Map Document Intelligence field names to our schema
+            field_mapping = {
+                "FirstName": "given_name",
+                "LastName": "family_name",
+                "DocumentNumber": "passport_number",
+                "DateOfBirth": "date_of_birth",
+                "DateOfExpiration": "expiry_date",
+                "Sex": "gender",
+                "CountryRegion": "country",
+                "Nationality": "nationality",
+                "PlaceOfBirth": "country_of_birth",
+                "DateOfIssue": "date_of_issue",
+            }
+            
+            for di_field, our_field in field_mapping.items():
+                if di_field in fields:
+                    field_data = fields[di_field]
+                    
+                    # Extract value (could be string, date, or other type)
+                    value = None
+                    if "valueString" in field_data:
+                        value = field_data["valueString"]
+                    elif "valueDate" in field_data:
+                        value = field_data["valueDate"]
+                    elif "content" in field_data:
+                        value = field_data["content"]
+                    
+                    if value:
+                        # Clean up the value
+                        if our_field in ["given_name", "family_name"]:
+                            value = self._clean_name_field(value)
+                        extracted_data[our_field] = value
+            
+            # Create full_name by combining given_name and family_name
+            if "given_name" in extracted_data or "family_name" in extracted_data:
+                given = extracted_data.get("given_name", "")
+                family = extracted_data.get("family_name", "")
+                extracted_data["full_name"] = f"{given} {family}".strip()
+            
+            # Normalize nationality codes
+            if "nationality" in extracted_data:
+                extracted_data["nationality"] = self._normalize_nationality(extracted_data["nationality"])
+            
+            return extracted_data
+            
+        except Exception as e:
+            print(f"Error parsing Document Intelligence result: {str(e)}")
+            return extracted_data
+
+    def _extract_confidence_from_di(self, result: Dict[str, Any]) -> Dict[str, float]:
+        """Extract confidence scores from Document Intelligence result."""
+        confidence_scores = {"overall": 0.0}
+        
+        try:
+            analyze_result = result.get("analyzeResult", {})
+            documents = analyze_result.get("documents", [])
+            
+            if documents:
+                doc = documents[0]
+                fields = doc.get("fields", {})
+                
+                # Get confidence for each field
+                confidences = []
+                for field_name, field_data in fields.items():
+                    if "confidence" in field_data:
+                        conf = field_data["confidence"]
+                        confidence_scores[field_name.lower()] = conf
+                        confidences.append(conf)
+                
+                # Calculate overall confidence
+                if confidences:
+                    confidence_scores["overall"] = sum(confidences) / len(confidences)
+                else:
+                    confidence_scores["overall"] = 0.9  # Default high confidence for DI
+            
+        except Exception as e:
+            print(f"Error extracting confidence scores: {str(e)}")
+            confidence_scores["overall"] = 0.85
+        
+        return confidence_scores
+    
+    def _clean_name_field(self, name: str) -> str:
+        """
+        Clean name fields by removing common test/specimen markers and normalizing format.
+        
+        Args:
+            name: Raw name string from OCR
+            
+        Returns:
+            Cleaned name string
+        """
+        if not name:
+            return ""
+        
+        # Remove common specimen/test markers (case-insensitive)
+        specimen_markers = [
+            "SPECIMEN", "SAMPLE", "TEST", "DEMO", "EXAMPLE",
+            "MODELO", "MUESTRA", "ECHANTILLON"
+        ]
+        
+        cleaned = name.strip()
+        
+        # Remove specimen markers
+        for marker in specimen_markers:
+            # Remove as standalone word
+            cleaned = re.sub(rf'\b{marker}\b', '', cleaned, flags=re.IGNORECASE)
+        
+        # Clean up multiple spaces and trim
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        # Capitalize properly (handle all-caps names)
+        if cleaned.isupper():
+            cleaned = cleaned.title()
+        
+        return cleaned
+    
+    def _normalize_nationality(self, nationality: str) -> str:
+        """
+        Normalize nationality strings to consistent format.
+        
+        Args:
+            nationality: Raw nationality string (could be code or full name)
+            
+        Returns:
+            Normalized nationality name
+        """
+        if not nationality:
+            return ""
+        
+        nationality = nationality.strip().upper()
+        
+        # Map common nationality codes to full names
+        nationality_map = {
+            "NPL": "Nepalese",
+            "NEPALI": "Nepalese",
+            "IND": "Indian",
+            "INDIAN": "Indian",
+            "AUS": "Australian",
+            "AUSTRALIAN": "Australian",
+            "GBR": "British",
+            "BRITISH": "British",
+            "USA": "American",
+            "AMERICAN": "American",
+            "CAN": "Canadian",
+            "CANADIAN": "Canadian",
+            "CHN": "Chinese",
+            "CHINESE": "Chinese",
+            "JPN": "Japanese",
+            "JAPANESE": "Japanese",
+            "KOR": "Korean",
+            "KOREAN": "Korean",
+        }
+        
+        return nationality_map.get(nationality, nationality.capitalize())
+
         result = self._poll_azure_vision_api(operation_url)
 
         # Extract text from result
@@ -170,6 +508,8 @@ class OCRService:
         extractors = {
             'PASSPORT': self._extract_passport_data,
             'TRANSCRIPT': self._extract_transcript_data,
+            'TRANSCRIPT_10': self._extract_transcript_data,  # Grade 10
+            'TRANSCRIPT_12': self._extract_transcript_data,  # Grade 12
             'ENGLISH_TEST': self._extract_english_test_data,
             'ID_CARD': self._extract_id_card_data,
         }
@@ -304,23 +644,163 @@ class OCRService:
         self,
         raw_text: str
     ) -> Dict[str, Any]:
-        """Extract fields from academic transcript."""
+        """Extract fields from academic transcript (Grade 10/12)."""
+        # Detect transcript type
+        is_grade_12 = bool(re.search(r'School\s+Leaving\s+Certificate|Grade\s+XII|\+2|HSEB', raw_text, re.IGNORECASE))
+        
+        if is_grade_12:
+            return self._extract_grade12_data(raw_text)
+        else:
+            return self._extract_grade10_data(raw_text)
+
+    def _extract_grade10_data(self, raw_text: str) -> Dict[str, Any]:
+        """Extract fields from Grade 10 (SEE) transcript."""
         data = {}
 
-        # Look for student name, ID, grades, etc.
-        patterns = {
-            'institution_name': r'(?:Institution|School|University|HSC|SLC)\s*[:\-]?\s*([A-Za-z\s]+)',
-            'student_id': r'(?:Student\s+ID|ID\s+Number|Candidate\s+ID)\s*[:\-]?\s*([A-Z0-9]+)',
-            'year_completed': r'(?:Completed|Graduation|Year|Date of Issue)\s*[:\-]?\s*(\d{4})',
-        }
+        # Extract student name: "GRADE-SHEET [NAME] THE GRADE"
+        name_match = re.search(
+            r'GRADE-SHEET\s+([A-Z][A-Z\s]+?)(?:THE GRADE|DATE OF BIRTH)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if name_match:
+            student_name = name_match.group(1).strip()
+            student_name = ' '.join(student_name.split())
+            data['student_name'] = student_name
 
-        for field, pattern in patterns.items():
-            match = re.search(pattern, raw_text, re.IGNORECASE)
-            if match:
-                data[field] = match.group(1).strip()
+        # Extract institution: "OF [SCHOOL NAME] IN THE"
+        institution_match = re.search(
+            r'OF\s+([A-Z][A-Z\s,\.\-]+?)\s+IN\s+THE',
+            raw_text,
+            re.IGNORECASE
+        )
+        if institution_match:
+            data['institution_name'] = institution_match.group(1).strip()
 
-        data['country'] = 'Australia'  # Default to Australia for transcripts
+        # Extract Board
+        if 'NATIONAL EXAMINATIONS BOARD' in raw_text or 'NEB' in raw_text:
+            data['board'] = 'NEB'
+
+        # Extract year: "(2020 AD)" or "2020 AD"
+        year_match = re.search(r'\((\d{4})\s*AD\)', raw_text)
+        if year_match:
+            data['year_completed'] = year_match.group(1)
+
+        # Extract roll/symbol number
+        roll_match = re.search(
+            r'(?:ROLL|SYMBOL)\s+NO\s+OF\s+(\d+)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if roll_match:
+            data['roll_number'] = roll_match.group(1)
+
+        # Extract GPA: "GRADE POINT AVERAGE (GPA): [VALUE]"
+        gpa_match = re.search(
+            r'GRADE\s+POINT\s+AVERAGE\s*\(GPA\)[:\s]+([0-9.]+)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if gpa_match:
+            data['gpa'] = gpa_match.group(1)
+            data['result'] = f"{gpa_match.group(1)} GPA"
+
+        data['country'] = 'Nepal'
+        data['subjects'] = self._extract_subject_grades(raw_text)
+
         return data
+
+    def _extract_grade12_data(self, raw_text: str) -> Dict[str, Any]:
+        """Extract fields from Grade 12 (+2/HSEB) transcript."""
+        data = {}
+
+        # Extract student name: "Name of Student : [NAME]"
+        name_match = re.search(
+            r'Name\s+of\s+Student\s*[:\-]\s*([A-Z][A-Z\s]+?)(?:\n|Date\s+of\s+Birth)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if name_match:
+            student_name = name_match.group(1).strip()
+            student_name = ' '.join(student_name.split())
+            data['student_name'] = student_name
+
+        # Extract institution: "School: [SCHOOL NAME]"
+        institution_match = re.search(
+            r'School\s*:\s*([A-Z][A-Z\s,\.\-\']+?)(?:\n|Subject)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if institution_match:
+            institution = institution_match.group(1).strip()
+            # Remove trailing location info if present
+            institution = re.sub(r',\s*[A-Z\s]+\d+,\s*[A-Z]+\s*$', '', institution)
+            data['institution_name'] = institution
+
+        # Extract Board
+        if 'NATIONAL EXAMINATIONS BOARD' in raw_text or 'NEB' in raw_text:
+            data['board'] = 'NEB'
+        elif 'HSEB' in raw_text or 'HIGHER SECONDARY EDUCATION BOARD' in raw_text:
+            data['board'] = 'HSEB'
+
+        # Extract year: "Year of Completion : 2079 (2022)"
+        year_match = re.search(
+            r'Year\s+of\s+Completion\s*[:\-]\s*\d+\s*\((\d{4})\)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if year_match:
+            data['year_completed'] = year_match.group(1)
+
+        # Extract symbol number
+        symbol_match = re.search(
+            r'Symbol\s+Number\s*[:\-]?\s*(\d+)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if symbol_match:
+            data['roll_number'] = symbol_match.group(1)
+
+        # Extract GPA: "Grade Point Average (GPA): [TOTAL] [ACTUAL_GPA]"
+        gpa_match = re.search(
+            r'GRADE\s+POINT\s+AVERAGE\s*\(GPA\)[:\s]+[\d.]+\s+([0-9.]+)',
+            raw_text,
+            re.IGNORECASE
+        )
+        if gpa_match:
+            data['gpa'] = gpa_match.group(1)
+            data['result'] = f"{gpa_match.group(1)} GPA"
+
+        data['country'] = 'Nepal'
+        data['subjects'] = self._extract_subject_grades(raw_text)
+
+        return data
+
+    def _extract_subject_grades(self, text: str) -> list:
+        """Extract subject names and grades from transcript."""
+        subjects = []
+        
+        # Look for patterns like "COMP ENGLISH A+" or "COMP. MATHMATICS 4 A"
+        # This is a simplified pattern - real transcripts vary widely
+        lines = text.split('\n')
+        for line in lines:
+            # Match lines with subject codes and grades
+            match = re.search(
+                r'(COMP\.?\s+[A-Z\s&,]+?)\s+([A-Z+\-\d.]+)\s*$',
+                line,
+                re.IGNORECASE
+            )
+            if match:
+                subject = match.group(1).strip()
+                grade = match.group(2).strip()
+                # Basic validation
+                if len(subject) > 5 and len(grade) <= 4:
+                    subjects.append({
+                        "subject": subject,
+                        "grade": grade
+                    })
+        
+        return subjects[:15]  # Limit to 15 subjects max
 
     def _extract_english_test_data(
         self,
@@ -342,19 +822,117 @@ class OCRService:
         else:
             data['test_type'] = 'Unknown'
 
-        # Common fields
-        patterns = {
-            'candidate_name': r'(?:Candidate|Name|Test Taker)\s*[:\-]?\s*([A-Z][A-Za-z\s]+)',
-            'test_date': r'(?:Test\s+Date|Date|Date of Test)\s*[:\-]?\s*(\d{1,2}[\s\-./]\w{3,9}[\s\-./]\d{2,4})',
-            'overall_score': r'(?:Overall|Total)\s*(?:Band|Score)?\s*[:\-]?\s*([0-9.]+)',
-        }
+        # Extract candidate name with better pattern matching
+        candidate_name = self._extract_candidate_name(raw_text)
+        if candidate_name:
+            data['candidate_name'] = candidate_name
 
-        for field, pattern in patterns.items():
-            match = re.search(pattern, raw_text, re.IGNORECASE)
-            if match:
-                data[field] = match.group(1).strip()
+        # Extract test date
+        test_date_match = re.search(
+            r'(?:Test\s+Date|Date|Date of Test|Date\s+of\s+Examination)\s*[:\-]?\s*(\d{1,2}[\s\-./]\w{3,9}[\s\-./]\d{2,4})',
+            raw_text,
+            re.IGNORECASE
+        )
+        if test_date_match:
+            data['test_date'] = test_date_match.group(1).strip()
+
+        # Extract overall score with multiple patterns
+        overall_score = self._extract_overall_score(raw_text, data.get('test_type', 'Unknown'))
+        if overall_score:
+            data['overall_score'] = overall_score
 
         return data
+
+    def _extract_overall_score(self, text: str, test_type: str) -> Optional[str]:
+        """
+        Extract overall score from English test documents.
+        Handles IELTS (Band Score), TOEFL (Total Score), PTE (Overall Score).
+        """
+        # Strategy 1: IELTS format - "Overall Band Score" with score on same or next line
+        if test_type == 'IELTS':
+            # Pattern: "Overall Band Score" followed by number (possibly on next line)
+            ielts_match = re.search(
+                r'Overall\s+Band\s+Score\s*\n?\s*([0-9.]+)',
+                text,
+                re.IGNORECASE
+            )
+            if ielts_match:
+                return ielts_match.group(1).strip()
+
+        # Strategy 2: Generic patterns for all test types
+        patterns = [
+            r'Overall\s+Score\s*[:\-]?\s*([0-9.]+)',  # PTE/TOEFL
+            r'Overall\s+Band\s*[:\-]?\s*([0-9.]+)',   # IELTS alternate
+            r'Total\s+Score\s*[:\-]?\s*([0-9.]+)',    # TOEFL
+            r'Overall\s*[:\-]\s*([0-9.]+)',           # Generic with colon
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        return None
+
+    def _extract_candidate_name(self, raw_text: str) -> Optional[str]:
+        """
+        Extract candidate name from English test documents.
+        Handles various formats: IELTS (First/Family Name), PTE (Name before ID), TOEFL, etc.
+        """
+        # Strategy 1: PTE format - Name appears before "Test Taker ID"
+        # Pattern: "Example Test Taker Test Taker ID: PTE110000014"
+        pte_name_match = re.search(
+            r'([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,3})\s+Test\s+Taker\s+ID',
+            raw_text,
+            re.IGNORECASE
+        )
+        if pte_name_match:
+            name = pte_name_match.group(1).strip()
+            # Avoid capturing "Score Report" or other headers
+            if name.upper() not in ['SCORE REPORT', 'TEST CENTRE', 'CANDIDATE INFORMATION']:
+                return self._clean_name_field(name)
+
+        # Strategy 2: Look for "First Name" and "Family Name" fields (IELTS format)
+        first_name_match = re.search(
+            r'First\s+Name\s*[:\-]?\s*\n?\s*([A-Z][A-Za-z]+)',
+            raw_text,
+            re.IGNORECASE
+        )
+        family_name_match = re.search(
+            r'(?:Family\s+Name|Surname|Last\s+Name)\s*[:\-]?\s*\n?\s*([A-Z][A-Za-z]+)',
+            raw_text,
+            re.IGNORECASE
+        )
+        
+        if first_name_match and family_name_match:
+            first = first_name_match.group(1).strip()
+            family = family_name_match.group(1).strip()
+            # Clean specimen markers
+            first = self._clean_name_field(first)
+            family = self._clean_name_field(family)
+            return f"{first} {family}"
+
+        # Strategy 3: Look for "Candidate Name:" or "Test Taker:" with colon (TOEFL format)
+        candidate_match = re.search(
+            r'(?:Candidate\s+Name|Name)\s*:\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,3})',
+            raw_text,
+            re.IGNORECASE
+        )
+        if candidate_match:
+            name = candidate_match.group(1).strip()
+            return self._clean_name_field(name)
+
+        # Strategy 4: Look for "Candidate:" followed by name on same or next line
+        candidate_line_match = re.search(
+            r'Candidate\s*[:\-]?\s*\n?\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})',
+            raw_text,
+            re.IGNORECASE
+        )
+        if candidate_line_match:
+            name = candidate_line_match.group(1).strip()
+            return self._clean_name_field(name)
+
+        return None
 
     def _extract_id_card_data(
         self,
@@ -607,17 +1185,26 @@ class OCRService:
                     nationality_map = {
                         'NEPALI': 'Nepalese',
                         'NEPAL': 'Nepal',
+                        'NPL': 'Nepalese',
                         'AUSTRALIAN': 'Australian',
+                        'AUS': 'Australian',
                         'INDIAN': 'Indian',
+                        'IND': 'Indian',
                         'CHINESE': 'Chinese',
+                        'CHN': 'Chinese',
                     }
                     mapped = nationality_map.get(nationality.upper(), nationality.title())
                     mappings['personal_details.nationality'] = mapped
             
-            # Handle date_of_birth
+            # Handle date_of_birth - normalize to ISO format YYYY-MM-DD
             if 'date_of_birth' in extracted_data:
                 dob = extracted_data['date_of_birth'].strip()
-                mappings['personal_details.date_of_birth'] = dob
+                # Document Intelligence returns ISO format, others might not
+                if re.match(r'^\d{4}-\d{2}-\d{2}', dob):
+                    mappings['personal_details.date_of_birth'] = dob
+                else:
+                    # Try to parse "31 DEC 2000" format
+                    mappings['personal_details.date_of_birth'] = self._normalize_date(dob)
             
             # Handle gender/sex
             if 'gender' in extracted_data:
@@ -632,7 +1219,9 @@ class OCRService:
                 # Convert country code to country name if needed
                 country_code_map = {
                     'NPL': 'Nepal', 'AUS': 'Australia', 'IND': 'India', 'CHN': 'China',
-                    'US': 'United States', 'GBR': 'United Kingdom', 'CAN': 'Canada'
+                    'US': 'United States', 'USA': 'United States',
+                    'GBR': 'United Kingdom', 'GB': 'United Kingdom', 'UK': 'United Kingdom',
+                    'CAN': 'Canada', 'CA': 'Canada'
                 }
                 country_name = country_code_map.get(country.upper(), country)
                 if country_name:
@@ -643,20 +1232,36 @@ class OCRService:
                 cob = extracted_data['country_of_birth'].strip()
                 cob = cob.split('\n')[0].split('|')[0].strip()
                 if len(cob) > 2:
+                    # Map country codes to names
+                    country_code_map = {
+                        'NPL': 'Nepal', 'AUS': 'Australia', 'IND': 'India', 'CHN': 'China',
+                    }
+                    cob = country_code_map.get(cob.upper(), cob)
                     mappings['personal_details.country_of_birth'] = cob.title()
             
-            # Handle expiry_date / passport_expiry
+            # Handle expiry_date / passport_expiry - normalize to ISO format
             if 'expiry_date' in extracted_data:
-                mappings['personal_details.passport_expiry'] = extracted_data['expiry_date'].strip()
+                exp = extracted_data['expiry_date'].strip()
+                if re.match(r'^\d{4}-\d{2}-\d{2}', exp):
+                    mappings['personal_details.passport_expiry'] = exp
+                else:
+                    mappings['personal_details.passport_expiry'] = self._normalize_date(exp)
             elif 'passport_expiry' in extracted_data:
-                mappings['personal_details.passport_expiry'] = extracted_data['passport_expiry'].strip()
+                exp = extracted_data['passport_expiry'].strip()
+                if re.match(r'^\d{4}-\d{2}-\d{2}', exp):
+                    mappings['personal_details.passport_expiry'] = exp
+                else:
+                    mappings['personal_details.passport_expiry'] = self._normalize_date(exp)
             
             # Handle date_of_issue
             if 'date_of_issue' in extracted_data:
                 doi = extracted_data['date_of_issue'].strip()
                 # Only map if it looks like a date, not a single letter (OCR error)
                 if len(doi) > 3 and any(char.isdigit() for char in doi):
-                    mappings['personal_details.passport_issue_date'] = doi
+                    if re.match(r'^\d{4}-\d{2}-\d{2}', doi):
+                        mappings['personal_details.passport_issue_date'] = doi
+                    else:
+                        mappings['personal_details.passport_issue_date'] = self._normalize_date(doi)
 
         elif document_type_code == 'TRANSCRIPT':
             if 'institution' in extracted_data:
@@ -674,6 +1279,40 @@ class OCRService:
                 mappings['language_cultural.english_test_date'] = extracted_data['test_date']
 
         return mappings
+
+    def _normalize_date(self, date_str: str) -> str:
+        """
+        Normalize various date formats to ISO format YYYY-MM-DD.
+        
+        Args:
+            date_str: Date string in various formats (e.g., "31 DEC 2000", "2000-12-31")
+            
+        Returns:
+            ISO formatted date string or original if parsing fails
+        """
+        if not date_str:
+            return date_str
+        
+        # Already in ISO format
+        if re.match(r'^\d{4}-\d{2}-\d{2}', date_str):
+            return date_str
+        
+        # Try to parse "31 DEC 2000" or "31-DEC-2000" format
+        month_map = {
+            'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+            'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+            'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+        }
+        
+        # Try "DD MMM YYYY" format
+        match = re.match(r'(\d{1,2})[\s\-]([A-Z]{3})[\s\-](\d{4})', date_str.upper())
+        if match:
+            day, month, year = match.groups()
+            if month in month_map:
+                return f"{year}-{month_map[month]}-{day.zfill(2)}"
+        
+        # Return original if can't parse
+        return date_str
 
 
 # Singleton instance

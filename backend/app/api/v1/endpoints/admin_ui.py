@@ -86,3 +86,9 @@ async def agents_page(request: Request):
 async def courses_page(request: Request):
     """Courses management page."""
     return templates.TemplateResponse("admin/courses.html", {"request": request})
+
+
+@router.get("/campuses", response_class=HTMLResponse)
+async def campuses_page(request: Request):
+    """Campuses management page."""
+    return templates.TemplateResponse("admin/campuses.html", {"request": request})

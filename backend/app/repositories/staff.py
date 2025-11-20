@@ -14,13 +14,13 @@ from app.models import (
     Application,
     ApplicationStage,
     ApplicationStageHistory,
+    AuditLog,
+    Comment,
     Document,
     DocumentStatus,
     DocumentType,
     StaffProfile,
     StudentProfile,
-    TimelineEntry,
-    TimelineEntryType,
     UserAccount,
     UserRole,
 )
@@ -143,7 +143,7 @@ class StaffRepository(BaseRepository[StaffProfile]):
             selectinload(Application.qualification_history),
             selectinload(Application.employment_history),
             selectinload(Application.stage_history),
-            selectinload(Application.timeline_entries).joinedload(TimelineEntry.actor)
+            selectinload(Application.comments).joinedload(Comment.author)
         ).filter(Application.id == application_id).first()
 
     # ========================================================================
@@ -216,32 +216,7 @@ class StaffRepository(BaseRepository[StaffProfile]):
         # Update document status
         document.status = status
 
-        # Create timeline entry
-        staff_profile = self.db.query(StaffProfile).filter(
-            StaffProfile.id == staff_id).first()
-        user_id = staff_profile.user_account_id if staff_profile else None
-
-        action_verb = "verified" if status == DocumentStatus.VERIFIED else "rejected"
-        message = f"Document {document.document_type.name} {action_verb}"
-        if notes:
-            message += f": {notes}"
-
-        timeline = TimelineEntry(
-            application_id=document.application_id,
-            entry_type=TimelineEntryType.DOCUMENT_VERIFIED,
-            actor_id=user_id,
-            actor_role=UserRole.STAFF,
-            message=message,
-            linked_document_id=document_id,
-            event_payload={
-                "document_id": str(document_id),
-                "document_type": document.document_type.code,
-                "status": status.value,
-                "notes": notes,
-                "verified_by": str(staff_id)
-            }
-        )
-        self.db.add(timeline)
+        # Document verification is tracked by AuditLog automatically
 
         self.db.commit()
         self.db.refresh(document)
@@ -266,24 +241,7 @@ class StaffRepository(BaseRepository[StaffProfile]):
 
         application.assigned_staff_id = staff_id
 
-        # Create timeline entry
-        staff_profile = self.db.query(StaffProfile).filter(
-            StaffProfile.id == staff_id).first()
-        staff_user = self.db.query(UserAccount).filter(
-            UserAccount.id == staff_profile.user_account_id
-        ).first() if staff_profile else None
-
-        timeline = TimelineEntry(
-            application_id=application_id,
-            entry_type=TimelineEntryType.ASSIGNED,
-            actor_id=assigned_by,
-            actor_role=UserRole.STAFF,
-            message=f"Application assigned to {
-                staff_user.email if staff_user else 'staff'}",
-            event_payload={
-                "assigned_to_staff_id": str(staff_id),
-                "assigned_by": str(assigned_by)})
-        self.db.add(timeline)
+        # Assignment is tracked by AuditLog automatically
 
         self.db.commit()
         self.db.refresh(application)
@@ -334,32 +292,7 @@ class StaffRepository(BaseRepository[StaffProfile]):
         )
         self.db.add(stage_history)
 
-        # Create timeline entry
-        staff_profile = self.db.query(StaffProfile).filter(
-            StaffProfile.id == staff_id).first()
-        user_id = staff_profile.user_account_id if staff_profile else None
-
-        message = f"Application moved to {
-            to_stage.value.replace(
-                '_', ' ').title()}"
-        if notes:
-            message += f": {notes}"
-
-        timeline = TimelineEntry(
-            application_id=application_id,
-            entry_type=TimelineEntryType.STAGE_CHANGED,
-            actor_id=user_id,
-            actor_role=UserRole.STAFF,
-            message=message,
-            stage=to_stage,
-            event_payload={
-                "from_stage": from_stage.value if from_stage else None,
-                "to_stage": to_stage.value,
-                "notes": notes,
-                "changed_by": str(staff_id)
-            }
-        )
-        self.db.add(timeline)
+        # Stage transition is tracked by ApplicationStageHistory above
 
         self.db.commit()
         self.db.refresh(application)
@@ -369,38 +302,37 @@ class StaffRepository(BaseRepository[StaffProfile]):
         self,
         application_id: UUID,
         staff_id: UUID,
-        comment: str,
-        is_internal: bool = False
-    ) -> TimelineEntry:
+        comment_text: str,
+        is_internal: bool = False,
+        parent_id: Optional[UUID] = None
+    ) -> Comment:
         """
-        Add a staff comment to application timeline.
+        Add a staff comment to application.
 
         Args:
             application_id: Application to comment on
             staff_id: Staff adding comment
-            comment: Comment text
+            comment_text: Comment content
             is_internal: If True, only visible to staff
+            parent_id: Optional parent comment for threading
         """
         staff_profile = self.db.query(StaffProfile).filter(
             StaffProfile.id == staff_id).first()
         if not staff_profile:
             raise ValueError(f"Staff {staff_id} not found")
 
-        timeline = TimelineEntry(
+        comment = Comment(
             application_id=application_id,
-            entry_type=TimelineEntryType.COMMENT_ADDED,
-            actor_id=staff_profile.user_account_id,
-            actor_role=UserRole.STAFF,
-            message=comment,
-            event_payload={
-                "is_internal": is_internal,
-                "staff_id": str(staff_id)
-            }
+            author_id=staff_profile.user_account_id,
+            author_role=UserRole.STAFF,
+            content=comment_text,
+            is_internal=is_internal,
+            parent_id=parent_id
         )
-        self.db.add(timeline)
+        self.db.add(comment)
         self.db.commit()
-        self.db.refresh(timeline)
-        return timeline
+        self.db.refresh(comment)
+        return comment
 
     # ========================================================================
     # DASHBOARD METRICS

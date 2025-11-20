@@ -352,15 +352,15 @@ def add_staff_comment(
     db: Session = Depends(get_db)
 ):
     """
-    Add a staff comment to application timeline.
+    Add a staff comment to application.
 
     **Request body**:
     - `comment`: Comment text (1-2000 characters)
     - `is_internal`: If true, only visible to staff (not student/agent)
 
     **Actions**:
-    - Creates `TimelineEntry` with COMMENT_ADDED type
-    - Visible in application timeline
+    - Creates `Comment` entry
+    - Visible in application comments
     """
     service = StaffService(db)
     try:

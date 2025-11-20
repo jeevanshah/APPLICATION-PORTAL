@@ -210,11 +210,11 @@ class GsDocumentRequestSchema(BaseModel):
 
 
 # ============================================================================
-# JSONB NESTED SCHEMAS (for TIMELINE_ENTRY table)
+# JSONB NESTED SCHEMAS (for AUDIT_LOG table)
 # ============================================================================
 
-class WorkflowEventPayloadSchema(BaseModel):
-    """Workflow event payload (stored in TIMELINE_ENTRY.event_payload)."""
+class WorkflowEventPayload(BaseModel):
+    """Workflow event payload (stored in AUDIT_LOG.event_data).
     event_type: str = Field(..., min_length=1, max_length=100)
     metadata: Optional[dict] = Field(default_factory=dict)
     triggered_by: str = Field(..., pattern="^(user|system|scheduled)$")

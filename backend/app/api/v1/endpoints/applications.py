@@ -15,8 +15,6 @@ from app.models import (
     ApplicationStage,
     ApplicationStageHistory,
     StaffProfile,
-    TimelineEntry,
-    TimelineEntryType,
     UserAccount,
     UserRole,
 )
@@ -71,27 +69,6 @@ def _calculate_completion_percentage(app: Application) -> int:
     return int((completed / total_sections) * 100)
 
 
-def _create_timeline_entry(
-    db: Session,
-    application_id: UUID,
-    entry_type: TimelineEntryType,
-    message: str,
-    actor: UserAccount,
-    stage: Optional[ApplicationStage] = None
-):
-    """Helper to create timeline entries."""
-    entry = TimelineEntry(
-        application_id=application_id,
-        entry_type=entry_type,
-        actor_id=actor.id,
-        actor_role=actor.role,
-        message=message,
-        stage=stage
-    )
-    db.add(entry)
-    return entry
-
-
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
@@ -124,15 +101,7 @@ async def create_application_draft(
             user_role=current_user.role
         )
 
-        # Create timeline entry
-        _create_timeline_entry(
-            db=db,
-            application_id=new_app.id,
-            entry_type=TimelineEntryType.APPLICATION_CREATED,
-            message="Application created for course",
-            actor=current_user,
-            stage=ApplicationStage.DRAFT
-        )
+        # Application creation tracked by AuditLog
         db.commit()
 
         return ApplicationResponse(
@@ -339,15 +308,7 @@ async def submit_application(
             user_role=current_user.role
         )
 
-        # Create timeline entry
-        _create_timeline_entry(
-            db=db,
-            application_id=app.id,
-            entry_type=TimelineEntryType.STAGE_CHANGED,
-            message="Application submitted for review",
-            actor=current_user,
-            stage=ApplicationStage.SUBMITTED
-        )
+        # Submission tracked by ApplicationStageHistory in service
         db.commit()
 
         return ApplicationResponse(
@@ -412,14 +373,7 @@ async def assign_application(
 
     app.assigned_staff_id = request.staff_id
 
-    # Create timeline entry
-    _create_timeline_entry(
-        db=db,
-        application_id=app.id,
-        entry_type=TimelineEntryType.ASSIGNED,
-        message=f"Application assigned to {staff.job_title}",
-        actor=current_user
-    )
+    # Assignment tracked by AuditLog
 
     db.commit()
     db.refresh(app)
@@ -469,17 +423,7 @@ async def change_application_stage(
     )
     db.add(stage_history)
 
-    # Create timeline entry
-    _create_timeline_entry(
-        db=db,
-        application_id=app.id,
-        entry_type=TimelineEntryType.STAGE_CHANGED,
-        message=f"Stage changed: {
-            previous_stage.value} → {
-            request.to_stage.value}",
-        actor=current_user,
-        stage=request.to_stage)
-
+    # Stage change tracked by ApplicationStageHistory above
     db.commit()
     db.refresh(app)
 

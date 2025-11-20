@@ -18,11 +18,11 @@ from app.models import (
     Application,
     ApplicationStage,
     ApplicationStageHistory,
+    Comment,
     Document,
     DocumentType,
     StaffProfile,
     StudentProfile,
-    TimelineEntry,
     UserAccount,
     UserRole,
 )
@@ -485,34 +485,34 @@ async def get_student_dashboard(
             assigned_staff_name=assigned_staff_name
         ))
 
-    # Get recent timeline activities (last 10 across all applications)
-    recent_timeline = db.query(TimelineEntry).filter(
-        TimelineEntry.application_id.in_([app.id for app in applications])
+    # Get recent comment activities (last 10 across all applications)
+    recent_timeline = db.query(Comment).filter(
+        Comment.application_id.in_([app.id for app in applications])
     ).options(
-        joinedload(TimelineEntry.actor)
-    ).order_by(desc(TimelineEntry.created_at)).limit(10).all()
+        joinedload(Comment.author)
+    ).order_by(desc(Comment.created_at)).limit(10).all()
 
     recent_activity = []
-    for entry in recent_timeline:
-        actor_name = None
-        if entry.actor:
+    for comment in recent_timeline:
+        author_name = None
+        if comment.author:
             # Try to get name from profile
-            if entry.actor.role == UserRole.STUDENT and entry.actor.student_profile:
-                actor_name = f"{
-                    entry.actor.student_profile.given_name} {
-                    entry.actor.student_profile.family_name}"
-            elif entry.actor.role == UserRole.AGENT and entry.actor.agent_profile:
-                actor_name = entry.actor.agent_profile.agency_name
-            elif entry.actor.role in [UserRole.STAFF, UserRole.ADMIN] and entry.actor.staff_profile:
-                actor_name = entry.actor.staff_profile.job_title or "Staff"
+            if comment.author.role == UserRole.STUDENT and comment.author.student_profile:
+                author_name = f"{
+                    comment.author.student_profile.given_name} {
+                    comment.author.student_profile.family_name}"
+            elif comment.author.role == UserRole.AGENT and comment.author.agent_profile:
+                author_name = comment.author.agent_profile.agency_name
+            elif comment.author.role in [UserRole.STAFF, UserRole.ADMIN] and comment.author.staff_profile:
+                author_name = comment.author.staff_profile.job_title or "Staff"
 
         recent_activity.append(RecentTimelineActivity(
-            id=entry.id,
-            application_id=entry.application_id,
-            entry_type=entry.entry_type.value,
-            message=entry.message,
-            created_at=entry.created_at,
-            actor_name=actor_name
+            id=comment.id,
+            application_id=comment.application_id,
+            entry_type="COMMENT",  # All are comments now
+            message=comment.content,
+            created_at=comment.created_at,
+            actor_name=author_name
         ))
 
     # Build student profile response
@@ -611,33 +611,33 @@ async def track_application(
     # Get required documents
     required_docs = _get_required_documents(application, db)
 
-    # Get timeline history
-    timeline_entries = db.query(TimelineEntry).filter(
-        TimelineEntry.application_id == application_id
+    # Get comment history
+    timeline_entries = db.query(Comment).filter(
+        Comment.application_id == application_id
     ).options(
-        joinedload(TimelineEntry.actor)
-    ).order_by(desc(TimelineEntry.created_at)).all()
+        joinedload(Comment.author)
+    ).order_by(desc(Comment.created_at)).all()
 
     timeline_items = []
-    for entry in timeline_entries:
-        actor_name = None
-        if entry.actor:
-            if entry.actor.role == UserRole.STUDENT and entry.actor.student_profile:
-                actor_name = f"{
-                    entry.actor.student_profile.given_name} {
-                    entry.actor.student_profile.family_name}"
-            elif entry.actor.role == UserRole.AGENT and entry.actor.agent_profile:
-                actor_name = entry.actor.agent_profile.agency_name
-            elif entry.actor.role in [UserRole.STAFF, UserRole.ADMIN] and entry.actor.staff_profile:
-                actor_name = entry.actor.staff_profile.job_title or "Staff"
+    for comment in timeline_entries:
+        author_name = None
+        if comment.author:
+            if comment.author.role == UserRole.STUDENT and comment.author.student_profile:
+                author_name = f"{
+                    comment.author.student_profile.given_name} {
+                    comment.author.student_profile.family_name}"
+            elif comment.author.role == UserRole.AGENT and comment.author.agent_profile:
+                author_name = comment.author.agent_profile.agency_name
+            elif comment.author.role in [UserRole.STAFF, UserRole.ADMIN] and comment.author.staff_profile:
+                author_name = comment.author.staff_profile.job_title or "Staff"
 
         timeline_items.append(RecentTimelineActivity(
-            id=entry.id,
-            application_id=entry.application_id,
-            entry_type=entry.entry_type.value,
-            message=entry.message,
-            created_at=entry.created_at,
-            actor_name=actor_name
+            id=comment.id,
+            application_id=comment.application_id,
+            entry_type="COMMENT",
+            message=comment.content,
+            created_at=comment.created_at,
+            actor_name=author_name
         ))
 
     # Get agent information

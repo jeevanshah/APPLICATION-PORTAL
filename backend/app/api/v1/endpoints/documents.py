@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_db
-from app.models import UserRole
+from app.models import UserAccount, UserRole
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
@@ -38,7 +38,7 @@ async def upload_document(
     file: UploadFile = File(...),
     process_ocr: bool = Form(True),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: UserAccount = Depends(get_current_user)
 ):
     """
     Upload a document for an application.
@@ -63,8 +63,7 @@ async def upload_document(
     - Auto-fill suggestions via GET /applications/{id}/documents/autofill
     """
     # Only agents, staff, and admins can upload documents
-    user_role = UserRole(current_user["role"])
-    if user_role == UserRole.STUDENT:
+    if current_user.role == UserRole.STUDENT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Students cannot upload documents. Please contact your agent."
@@ -85,8 +84,8 @@ async def upload_document(
             document_type_id=document_type_id,
             file=file_obj,
             filename=file.filename or "unnamed",
-            user_id=UUID(current_user["sub"]),
-            user_role=user_role,
+            user_id=current_user.id,
+            user_role=current_user.role,
             process_ocr=process_ocr
         )
 
@@ -118,12 +117,43 @@ async def upload_document(
         )
 
 
+@router.get("/types", response_model=List[dict])
+async def get_document_types(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all available document types.
+    
+    Returns list of document types with their properties:
+    - id, code, name, stage
+    - is_mandatory: Whether document is required
+    - accepts_ocr: Whether OCR processing is available
+    """
+    from app.models import DocumentType
+    
+    doc_types = db.query(DocumentType).order_by(DocumentType.display_order).all()
+    
+    return [
+        {
+            "id": str(dt.id),
+            "code": dt.code,
+            "name": dt.name,
+            "stage": dt.stage.value if hasattr(dt.stage, 'value') else dt.stage,
+            "is_mandatory": dt.is_mandatory,
+            "accepts_ocr": dt.ocr_model_ref is not None,
+            "display_order": dt.display_order
+        }
+        for dt in doc_types
+    ]
+
+
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: UUID,
     include_versions: bool = False,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: UserAccount = Depends(get_current_user)
 ):
     """
     Get document by ID.
@@ -139,8 +169,8 @@ async def get_document(
     try:
         document = service.get_document(
             document_id=document_id,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"]),
+            user_id=current_user.id,
+            user_role=current_user.role,
             include_versions=include_versions
         )
 
@@ -162,7 +192,7 @@ async def get_document(
 async def get_ocr_results(
     document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: UserAccount = Depends(get_current_user)
 ):
     """
     Get OCR extraction results for a document.
@@ -174,8 +204,8 @@ async def get_ocr_results(
     try:
         document = service.get_document(
             document_id=document_id,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"]),
+            user_id=current_user.id,
+            user_role=current_user.role,
             include_versions=True
         )
 
@@ -234,8 +264,8 @@ async def delete_document(
     try:
         service.delete_document(
             document_id=document_id,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"])
+            user_id=current_user.id,
+            user_role=current_user.role
         )
 
         return None
@@ -270,8 +300,8 @@ async def verify_document(
         document = service.verify_document(
             document_id=document_id,
             status=data.status,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"]),
+            user_id=current_user.id,
+            user_role=current_user.role,
             notes=data.notes
         )
 
@@ -308,8 +338,8 @@ async def list_application_documents(
     try:
         documents = service.get_application_documents(
             application_id=application_id,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"])
+            user_id=current_user.id,
+            user_role=current_user.role
         )
 
         # Convert to list response format
@@ -347,11 +377,11 @@ async def list_application_documents(
 
 
 @router.get("/application/{application_id}/autofill",
-            response_model=OCRAutoFillResponse)
+           response_model=OCRAutoFillResponse)
 async def get_autofill_suggestions(
     application_id: UUID,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: UserAccount = Depends(get_current_user)
 ):
     """
     Get OCR auto-fill suggestions for application form.
@@ -369,8 +399,8 @@ async def get_autofill_suggestions(
     try:
         suggestions = service.get_ocr_autofill_suggestions(
             application_id=application_id,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"])
+            user_id=current_user.id,
+            user_role=current_user.role
         )
 
         return suggestions
@@ -388,11 +418,11 @@ async def get_autofill_suggestions(
 
 
 @router.get("/application/{application_id}/stats",
-            response_model=DocumentStatsResponse)
+           response_model=DocumentStatsResponse)
 async def get_document_stats(
     application_id: UUID,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: UserAccount = Depends(get_current_user)
 ):
     """
     Get document statistics for an application.
@@ -404,8 +434,8 @@ async def get_document_stats(
     try:
         documents = service.get_application_documents(
             application_id=application_id,
-            user_id=UUID(current_user["sub"]),
-            user_role=UserRole(current_user["role"])
+            user_id=current_user.id,
+            user_role=current_user.role
         )
 
         # Calculate statistics
@@ -468,32 +498,55 @@ async def get_document_stats(
         )
 
 
-@router.get("/types", response_model=List[dict])
-async def get_document_types(
+@router.post("/{document_id}/reprocess-ocr", response_model=DocumentResponse)
+async def reprocess_ocr(
+    document_id: UUID,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: UserAccount = Depends(get_current_user)
 ):
     """
-    Get all available document types.
+    Re-process OCR for an existing document.
     
-    Returns list of document types with their properties:
-    - id, code, name, stage
-    - is_mandatory: Whether document is required
-    - accepts_ocr: Whether OCR processing is available
+    Useful for testing new OCR models or re-extracting data.
+    Only admins and staff can trigger reprocessing.
     """
-    from app.models import DocumentType
+    # Only staff and admins can reprocess
+    if current_user.role not in [UserRole.STAFF, UserRole.ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only staff and admins can reprocess OCR"
+        )
     
-    doc_types = db.query(DocumentType).order_by(DocumentType.display_order).all()
+    service = DocumentService(db)
     
-    return [
-        {
-            "id": str(dt.id),
-            "code": dt.code,
-            "name": dt.name,
-            "stage": dt.stage.value if hasattr(dt.stage, 'value') else dt.stage,
-            "is_mandatory": dt.is_mandatory,
-            "accepts_ocr": dt.ocr_model_ref is not None,
-            "display_order": dt.display_order
-        }
-        for dt in doc_types
-    ]
+    try:
+        # Get document with permission check
+        document = service.get_document(
+            document_id=document_id,
+            user_id=current_user.id,
+            user_role=current_user.role,
+            include_versions=True
+        )
+        
+        # Re-process OCR
+        await service.reprocess_ocr(document_id)
+        
+        # Refresh and return
+        db.refresh(document)
+        return document
+        
+    except DocumentNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    except DocumentPermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OCR reprocessing failed: {str(e)}"
+        )

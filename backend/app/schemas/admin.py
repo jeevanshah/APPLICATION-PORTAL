@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ==================== RTO PROFILE SCHEMAS ====================
@@ -132,14 +132,46 @@ class AgentUpdateRequest(BaseModel):
     rto_profile_id: Optional[UUID] = None
 
 
+# ==================== CAMPUS SCHEMAS ====================
+
+class CampusCreate(BaseModel):
+    """Create/update campus."""
+    rto_profile_id: Optional[UUID] = Field(None, description="RTO profile ID (defaults to admin's RTO if not provided)")
+    name: str = Field(..., min_length=1, max_length=255, description="Campus name")
+    code: Optional[str] = Field(None, max_length=20, description="Campus code (e.g., SYD, MEL)")
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    address: Optional[dict] = Field(None, description="Address object: {street, city, state, postcode, country}")
+    max_students: Optional[int] = Field(None, gt=0, description="Maximum student capacity")
+
+
+class CampusResponse(BaseModel):
+    """Campus response."""
+    id: UUID
+    rto_profile_id: UUID
+    name: str
+    code: Optional[str]
+    contact_email: Optional[str]
+    contact_phone: Optional[str]
+    address: Optional[dict]
+    max_students: Optional[int]
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 # ==================== COURSE OFFERING SCHEMAS ====================
 
 class CourseOfferingCreate(BaseModel):
     """Create/update course offering."""
+    rto_profile_id: Optional[UUID] = Field(None, description="RTO profile ID (defaults to admin's RTO if not provided)")
     course_code: str = Field(..., min_length=1, max_length=50)
     course_name: str = Field(..., min_length=1, max_length=255)
     intake: str = Field(..., description="e.g., 'Feb 2025'")
-    campus: str = Field(..., min_length=1, max_length=100)
+    campus_id: UUID = Field(..., description="Campus ID")
     tuition_fee: float = Field(..., gt=0)
     application_deadline: Optional[str] = None
 
@@ -147,17 +179,29 @@ class CourseOfferingCreate(BaseModel):
 class CourseOfferingResponse(BaseModel):
     """Course offering response."""
     id: UUID
+    rto_profile_id: UUID
+    campus_id: Optional[UUID]
     course_code: str
     course_name: str
     intake: str
-    campus: str
     tuition_fee: float
     application_deadline: Optional[str]
     is_active: bool
     created_at: Optional[datetime] = None
+    campus: Optional[CampusResponse] = None  # Nested campus details
 
     class Config:
         from_attributes = True
+    
+    @field_validator('application_deadline', mode='before')
+    @classmethod
+    def serialize_date(cls, v):
+        """Convert date to string."""
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):
+            return v.isoformat()
+        return str(v)
 
 
 # ==================== SYSTEM STATUS ====================
@@ -166,6 +210,7 @@ class SystemStatus(BaseModel):
     """System configuration status."""
     rto_profiles: int
     document_types: int
+    campuses: int
     staff_members: int
     courses: int
     configured: bool

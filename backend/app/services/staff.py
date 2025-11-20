@@ -18,6 +18,7 @@ from app.schemas.staff import (
     ApplicationActionResponse,
     ApplicationDetailForReview,
     ApplicationListItem,
+    CommentDetail,
     CourseSummary,
     DocumentSummaryForStaff,
     DocumentVerificationResponse,
@@ -28,7 +29,6 @@ from app.schemas.staff import (
     StaffCommentResponse,
     StaffMetrics,
     StudentSummary,
-    TimelineEntryDetail,
 )
 
 
@@ -207,18 +207,18 @@ class StaffService:
                 version_count=len(doc.versions)
             ))
 
-        # Build timeline entries
-        timeline = []
-        for entry in app.timeline_entries:
-            actor_email = entry.actor.email if entry.actor else None
-            timeline.append(TimelineEntryDetail(
-                id=entry.id,
-                entry_type=entry.entry_type.value,
-                message=entry.message,
-                actor_email=actor_email,
-                actor_role=entry.actor_role,
-                created_at=entry.created_at,
-                event_payload=entry.event_payload
+        # Build comment entries
+        comments = []
+        for comment in app.comments:
+            author_email = comment.author.email if comment.author else None
+            comments.append(CommentDetail(
+                id=comment.id,
+                content=comment.content,
+                author_email=author_email,
+                author_role=comment.author_role,
+                is_internal=comment.is_internal,
+                is_edited=comment.is_edited,
+                created_at=comment.created_at
             ))
 
         # Build history
@@ -257,7 +257,7 @@ class StaffService:
             qualification_history=qualifications,
             employment_history=employment,
             documents=documents,
-            timeline=timeline,
+            comments=comments,
             assigned_staff_email=assigned_staff_email
         )
 
@@ -409,18 +409,18 @@ class StaffService:
         is_internal: bool = False
     ) -> StaffCommentResponse:
         """Add staff comment to application."""
-        timeline_entry = self.staff_repo.add_staff_comment(
+        comment_entry = self.staff_repo.add_staff_comment(
             application_id=application_id,
             staff_id=staff_id,
-            comment=comment,
+            comment_text=comment,
             is_internal=is_internal
         )
 
         return StaffCommentResponse(
-            timeline_entry_id=timeline_entry.id,
+            timeline_entry_id=comment_entry.id,  # Keep field name for backwards compat
             application_id=application_id,
             comment=comment,
-            created_at=timeline_entry.created_at
+            created_at=comment_entry.created_at
         )
 
     def approve_application(

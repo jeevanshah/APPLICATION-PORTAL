@@ -104,7 +104,7 @@ class RecentTimelineActivity(BaseModel):
     """Recent timeline entry for dashboard feed."""
     id: UUID
     application_id: UUID
-    entry_type: str  # TimelineEntryType enum value
+    entry_type: str  # Fixed to "COMMENT" for all comment entries
     message: str
     created_at: datetime
     actor_name: Optional[str] = None  # Name of person who performed the action

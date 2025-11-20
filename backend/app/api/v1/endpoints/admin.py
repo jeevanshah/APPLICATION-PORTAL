@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_db
-from app.models import UserRole, RtoProfile, DocumentType, UserAccount, StaffProfile, CourseOffering
+from app.models import UserRole, RtoProfile, DocumentType, UserAccount, StaffProfile, CourseOffering, Campus
 from app.schemas.admin import (
     RTOProfileCreate,
     RTOProfileResponse,
@@ -23,6 +23,8 @@ from app.schemas.admin import (
     AgentResponse,
     CourseOfferingCreate,
     CourseOfferingResponse,
+    CampusCreate,
+    CampusResponse,
 )
 from app.core.security import get_password_hash
 
@@ -660,11 +662,15 @@ async def create_course(
             detail=f"Course code '{data.course_code}' already exists"
         )
 
+    # Use provided RTO profile ID or default to admin's RTO
+    rto_profile_id = data.rto_profile_id or admin.rto_profile_id
+
     course = CourseOffering(
+        rto_profile_id=rto_profile_id,
         course_code=data.course_code,
         course_name=data.course_name,
         intake=data.intake,
-        campus=data.campus,
+        campus_id=data.campus_id,
         tuition_fee=data.tuition_fee,
         application_deadline=data.application_deadline,
         is_active=True,
@@ -707,7 +713,9 @@ async def update_course(
             detail="Course not found"
         )
 
-    for key, value in data.dict(exclude_unset=True).items():
+    # Update fields from request
+    update_data = data.dict(exclude_unset=True)
+    for key, value in update_data.items():
         setattr(course, key, value)
 
     db.commit()
@@ -736,6 +744,139 @@ async def delete_course(
     db.commit()
     
     return {"message": f"Course '{course.course_name}' deleted successfully"}
+
+
+# ==================== CAMPUS MANAGEMENT ====================
+
+@router.get("/campuses", response_model=List[CampusResponse])
+async def list_campuses(
+    rto_profile_id: UUID = None,
+    db: Session = Depends(get_db),
+    admin: UserAccount = Depends(require_admin)
+):
+    """List all campuses (excluding soft deleted)."""
+    query = db.query(Campus).filter(Campus.deleted_at.is_(None))
+    
+    # Filter by RTO if specified, otherwise use admin's RTO
+    if rto_profile_id:
+        query = query.filter(Campus.rto_profile_id == rto_profile_id)
+    else:
+        query = query.filter(Campus.rto_profile_id == admin.rto_profile_id)
+    
+    return query.order_by(Campus.name).all()
+
+
+@router.post("/campuses", response_model=CampusResponse, status_code=status.HTTP_201_CREATED)
+async def create_campus(
+    data: CampusCreate,
+    db: Session = Depends(get_db),
+    admin: UserAccount = Depends(require_admin)
+):
+    """Create a new campus."""
+    # Use provided RTO profile ID or default to admin's RTO
+    rto_profile_id = data.rto_profile_id or admin.rto_profile_id
+    
+    # Check if campus code already exists for this RTO
+    if data.code:
+        existing = db.query(Campus).filter(
+            Campus.code == data.code,
+            Campus.rto_profile_id == rto_profile_id,
+            Campus.deleted_at.is_(None)
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Campus code '{data.code}' already exists for this RTO"
+            )
+    
+    campus = Campus(
+        rto_profile_id=rto_profile_id,
+        name=data.name,
+        code=data.code,
+        contact_email=data.contact_email,
+        contact_phone=data.contact_phone,
+        address=data.address,
+        max_students=data.max_students,
+        is_active=True
+    )
+    
+    db.add(campus)
+    db.commit()
+    db.refresh(campus)
+    return campus
+
+
+@router.get("/campuses/{campus_id}", response_model=CampusResponse)
+async def get_campus(
+    campus_id: UUID,
+    db: Session = Depends(get_db),
+    admin: UserAccount = Depends(require_admin)
+):
+    """Get campus details."""
+    campus = db.query(Campus).filter(
+        Campus.id == campus_id,
+        Campus.deleted_at.is_(None)
+    ).first()
+    if not campus:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campus not found"
+        )
+    return campus
+
+
+@router.patch("/campuses/{campus_id}", response_model=CampusResponse)
+async def update_campus(
+    campus_id: UUID,
+    data: CampusCreate,
+    db: Session = Depends(get_db),
+    admin: UserAccount = Depends(require_admin)
+):
+    """Update campus details."""
+    campus = db.query(Campus).filter(
+        Campus.id == campus_id,
+        Campus.deleted_at.is_(None)
+    ).first()
+    if not campus:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campus not found"
+        )
+    
+    # Update fields from request
+    update_data = data.dict(exclude_unset=True, exclude={'rto_profile_id'})
+    for key, value in update_data.items():
+        setattr(campus, key, value)
+    
+    db.commit()
+    db.refresh(campus)
+    return campus
+
+
+@router.delete("/campuses/{campus_id}")
+async def delete_campus(
+    campus_id: UUID,
+    db: Session = Depends(get_db),
+    admin: UserAccount = Depends(require_admin)
+):
+    """Soft delete campus."""
+    from datetime import datetime
+    
+    campus = db.query(Campus).filter(
+        Campus.id == campus_id,
+        Campus.deleted_at.is_(None)
+    ).first()
+    if not campus:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campus not found"
+        )
+    
+    campus.deleted_at = datetime.utcnow()
+    campus.is_active = False
+    db.commit()
+    
+    return {"message": f"Campus '{campus.name}' deleted successfully"}
 
 
 # ==================== SYSTEM STATUS ====================

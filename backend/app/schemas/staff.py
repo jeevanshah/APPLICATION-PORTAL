@@ -137,15 +137,15 @@ class EmploymentHistoryDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TimelineEntryDetail(BaseModel):
-    """Timeline entry for application history."""
+class CommentDetail(BaseModel):
+    """Comment entry for application."""
     id: UUID
-    entry_type: str
-    message: str
-    actor_email: Optional[str] = None
-    actor_role: Optional[UserRole] = None
+    content: str
+    author_email: Optional[str] = None
+    author_role: Optional[UserRole] = None
+    is_internal: bool = False
+    is_edited: bool = False
     created_at: datetime
-    event_payload: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -183,8 +183,8 @@ class ApplicationDetailForReview(BaseModel):
     # Documents
     documents: List[DocumentSummaryForStaff] = []
 
-    # Timeline
-    timeline: List[TimelineEntryDetail] = []
+    # Comments
+    comments: List[CommentDetail] = []
 
     # Staff assignment
     assigned_staff_email: Optional[str] = None

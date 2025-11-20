@@ -176,11 +176,14 @@ class DocumentService:
         if process_ocr and doc_type.ocr_model_ref:
             try:
                 await self._process_ocr(document, version, doc_type)
+                # Refresh to get updated OCR status and timestamp
+                self.db.refresh(document)
             except OCRError as e:
                 # Log error but don't fail upload
                 print(f"OCR processing failed: {e}")
                 document.ocr_status = OCRStatus.FAILED
                 self.db.commit()
+                self.db.refresh(document)
 
         return document
 
@@ -469,6 +472,43 @@ class DocumentService:
         # Soft delete
         document.status = DocumentStatus.DELETED
         self.db.commit()
+
+    async def reprocess_ocr(self, document_id: UUID):
+        """
+        Re-process OCR for an existing document.
+        
+        Args:
+            document_id: Document UUID
+            
+        Raises:
+            DocumentNotFoundError: If document not found
+            OCRError: If OCR processing fails
+        """
+        document = self.doc_repo.get_by_id(document_id)
+        if not document:
+            raise DocumentNotFoundError("Document not found")
+        
+        # Get latest version
+        version = self.doc_repo.get_latest_version(document_id)
+        if not version:
+            raise DocumentValidationError("No document version found")
+        
+        # Get document type
+        doc_type = document.document_type
+        if not doc_type.ocr_model_ref:
+            raise DocumentValidationError("Document type does not support OCR")
+        
+        # Reset OCR status
+        document.ocr_status = OCRStatus.PENDING
+        document.ocr_completed_at = None
+        self.db.commit()
+        
+        # Clear existing OCR data from version
+        version.ocr_json = None
+        self.db.commit()
+        
+        # Re-process
+        await self._process_ocr(document, version, doc_type)
 
     def _can_upload(
         self,

@@ -16,9 +16,8 @@ from app.core.config import settings
 # Import all models to ensure they're registered with Base
 from app.models import (
     RtoProfile, UserAccount, AgentProfile, StaffProfile, StudentProfile,
-    CourseOffering, Application, ApplicationStageHistory, SchoolingHistory,
-    QualificationHistory, EmploymentHistory, DocumentType, Document,
-    DocumentVersion, TimelineEntry, AuditLog
+    CourseOffering, Application, ApplicationStageHistory,
+    DocumentType, Document, DocumentVersion, Comment, AuditLog
 )
 
 # Alembic Config object
