@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offer of Admission - {{ student.family_name }}, {{ student.given_name }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        .page {
+            page-break-after: always;
+            padding: 10px;
+        }
+        
+        .page:last-child {
+            page-break-after: auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #000;
+        }
+        
+        .header h1 {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .header h2 {
+            font-size: 11pt;
+            font-weight: normal;
+        }
+        
+        .document-info {
+            margin-bottom: 15px;
+        }
+        
+        .document-info p {
+            margin-bottom: 3px;
+        }
+        
+        .greeting {
+            margin: 15px 0;
+        }
+        
+        .section-title {
+            font-weight: bold;
+            font-size: 11pt;
+            margin-top: 15px;
+            margin-bottom: 8px;
+            background-color: #f0f0f0;
+            padding: 5px;
+        }
+        
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        
+        .details-table td {
+            padding: 5px;
+            border: 1px solid #ccc;
+            vertical-align: top;
+        }
+        
+        .details-table td:first-child {
+            width: 40%;
+            font-weight: bold;
+            background-color: #f9f9f9;
+        }
+        
+        .footer-info {
+            font-size: 8pt;
+            text-align: center;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ccc;
+        }
+        
+        .page-number {
+            text-align: right;
+            font-size: 8pt;
+            margin-top: 5px;
+        }
+        
+        .signature-section {
+            margin-top: 30px;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 200px;
+            margin-top: 40px;
+            display: inline-block;
+        }
+        
+        .signature-box {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #000;
+        }
+        
+        ul {
+            margin-left: 20px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+        }
+        
+        li {
+            margin-bottom: 5px;
+        }
+        
+        .terms-section {
+            font-size: 9pt;
+        }
+        
+        .terms-section ol {
+            margin-left: 20px;
+        }
+        
+        .terms-section li {
+            margin-bottom: 8px;
+        }
+        
+        .initial-box {
+            display: inline-block;
+            width: 100px;
+            border-bottom: 1px solid #000;
+            margin-right: 10px;
+        }
+        
+        .glossary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        
+        .glossary-table td {
+            padding: 8px;
+            border: 1px solid #ccc;
+        }
+        
+        .glossary-table td:first-child {
+            width: 30%;
+            font-weight: bold;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <!-- PAGE 1: Offer Details -->
+    <div class="page">
+        <div class="header">
+            <h1>OFFER OF ADMISSION & WRITTEN AGREEMENT</h1>
+            <h2>(INTERNATIONAL STUDENTS)</h2>
+        </div>
+        
+        <div class="document-info">
+            <p><strong>Date:</strong> {{ offer_date }}</p>
+            <p><strong>Student Name:</strong> {{ student.title }} {{ student.given_name }} {{ student.family_name }}</p>
+            <p><strong>Student ID:</strong> {{ student.student_id }}</p>
+        </div>
+        
+        <div class="greeting">
+            <p>Dear {{ student.given_name }} {{ student.family_name }},</p>
+            <br>
+            <p><strong>Congratulations!</strong> We are pleased to offer you a place at the Churchill Institute of Higher Education (CIHE).</p>
+            <br>
+            <p>Please read all pages of this Offer of Admission carefully as it contains important information relating to your enrolment. Refer to the Glossary (Appendix A) for an explanation of terminology used throughout this document.</p>
+        </div>
+        
+        <div class="section-title">Your details on CIHE records are as below:</div>
+        
+        <h3 style="font-size: 11pt; margin-top: 10px; margin-bottom: 5px;">Personal Details</h3>
+        <table class="details-table">
+            <tr>
+                <td>Family Name</td>
+                <td>{{ student.family_name }}</td>
+            </tr>
+            <tr>
+                <td>Given Name</td>
+                <td>{{ student.given_name }}</td>
+            </tr>
+            <tr>
+                <td>Gender</td>
+                <td>{{ student.gender }}</td>
+            </tr>
+            <tr>
+                <td>Date of Birth</td>
+                <td>{{ student.date_of_birth }}</td>
+            </tr>
+            <tr>
+                <td>Current Address</td>
+                <td>{{ student.current_address }}</td>
+            </tr>
+            <tr>
+                <td>Overseas Address</td>
+                <td>{{ student.overseas_address }}</td>
+            </tr>
+            <tr>
+                <td>Phone</td>
+                <td>{{ student.phone }}</td>
+            </tr>
+            <tr>
+                <td>Email</td>
+                <td>{{ student.email }}</td>
+            </tr>
+            <tr>
+                <td>Passport Number</td>
+                <td>{{ student.passport_number }}</td>
+            </tr>
+            <tr>
+                <td>Student's nominated Emergency Contact</td>
+                <td>{{ emergency_contact.name }}, {{ emergency_contact.relationship }}, {{ emergency_contact.phone }}</td>
+            </tr>
+            <tr>
+                <td>Registered Higher Education Provider</td>
+                <td>{{ rto.legal_name }}</td>
+            </tr>
+            <tr>
+                <td>TEQSA Provider Number</td>
+                <td>{{ rto.teqsa_number }}</td>
+            </tr>
+            <tr>
+                <td>CRICOS Provider Code</td>
+                <td>{{ rto.cricos_code }}</td>
+            </tr>
+        </table>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 1 of 8
+        </div>
+    </div>
+    
+    <!-- PAGE 2: Course Details -->
+    <div class="page">
+        <h3 style="font-size: 11pt; margin-bottom: 5px;">Course Details</h3>
+        <table class="details-table">
+            <tr>
+                <td>Course Code and Name</td>
+                <td>{{ course.course_code }} : {{ course.course_name }}</td>
+            </tr>
+            <tr>
+                <td>Course AQF Level</td>
+                <td>{{ course.aqf_level }}</td>
+            </tr>
+            <tr>
+                <td>Course CRICOS Code</td>
+                <td>{{ course.cricos_code }}</td>
+            </tr>
+            <tr>
+                <td>Course Start Date</td>
+                <td>{{ offer.course_start_date }}</td>
+            </tr>
+            <tr>
+                <td>Course End Date</td>
+                <td>{{ offer.course_end_date }}</td>
+            </tr>
+            <tr>
+                <td>Conditions of Admission</td>
+                <td>{{ offer.conditions_of_admission or "None" }}</td>
+            </tr>
+            <tr>
+                <td>Advanced Standing Awarded</td>
+                <td>{{ offer.advanced_standing or "NA" }}</td>
+            </tr>
+            <tr>
+                <td>Course Duration (after Advanced Standing, if applicable)</td>
+                <td>{{ course.duration_weeks }} Weeks</td>
+            </tr>
+            <tr>
+                <td>Study Load</td>
+                <td>{{ course.study_load }}</td>
+            </tr>
+            <tr>
+                <td>Course Delivery Location and Delivery Mode</td>
+                <td>{{ campus.address }} All subjects are taught on campus at this location.</td>
+            </tr>
+            <tr>
+                <td>Work Integrated Learning (WIL) Requirements</td>
+                <td>{{ course.wil_requirements or "NA" }}</td>
+            </tr>
+            <tr>
+                <td>Third-Party Providers engaged by CIHE to deliver / support the course</td>
+                <td>{{ course.third_party_providers or "NA" }}</td>
+            </tr>
+            <tr>
+                <td>Total Course Fee</td>
+                <td>${{ "%.2f"|format(fees.total_tuition_fee) }}</td>
+            </tr>
+            <tr>
+                <td>Bursary or Scholarship as percentage of Total Course Tuition Fees</td>
+                <td>{{ offer.scholarship_percentage }}%</td>
+            </tr>
+            <tr>
+                <td>Financial Conditions: Bursary or Scholarship</td>
+                <td>Scholarships and Bursaries are valid from the Course Start to End Dates, conditions apply (refer to section 15)</td>
+            </tr>
+            <tr>
+                <td>Tuition Fee Deposit Payable (includes Bursary or Scholarship, if applicable)</td>
+                <td>
+                    Initial Deposit Tuition Fee = ${{ "%.2f"|format(fees.deposit_tuition_fee) }}<br>
+                    Material Fee = ${{ "%.2f"|format(fees.material_fee) }}<br>
+                    Enrolment Fee = ${{ "%.2f"|format(fees.enrolment_fee) }}<br>
+                    <strong>Total Deposit Payable = ${{ "%.2f"|format(fees.total_deposit) }}</strong>
+                </td>
+            </tr>
+            <tr>
+                <td>Course Tuition Fees owed after Deposit *</td>
+                <td>${{ "%.2f"|format(fees.remaining_tuition_fee) }}</td>
+            </tr>
+            <tr>
+                <td>Ancillary Fees</td>
+                <td>CIHE charges ancillary fees for some items. Refer to the fees page of our website for details.</td>
+            </tr>
+        </table>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 2 of 8
+        </div>
+    </div>
+    
+    <!-- PAGE 3: Prerequisites & Payment Details -->
+    <div class="page">
+        <h3 style="font-size: 11pt; margin-bottom: 5px;">Course Pre-requisites</h3>
+        <table class="details-table">
+            <tr>
+                <td colspan="2">
+                    <strong>Academic:</strong><br>
+                    Completion of:
+                    <ul>
+                        <li>Year 12 of High School with an ATAR of 60 or equivalent; or</li>
+                        <li>A currently accredited Tertiary Preparation Program, NSW TAFE Tertiary Preparation Certificate (TPC); or a Foundation Year Course; or</li>
+                        <li>A Vocational Education & Training (VET) Qualification from an accredited Australian VET Provider (RTO): Certificate IV (AQF 4); or Diploma (AQF 5), or an Advanced Diploma (AQF6); or</li>
+                        <li>An Australian Higher Education qualification from a registered higher education provider: Diploma (AQF5); or Associate Degree (AQF6); or a Bachelors' degree (AQF7)</li>
+                    </ul>
+                    <br>
+                    <strong>English Language Proficiency (ELP):</strong><br>
+                    If English is not the applicant's principal language or the applicant has not completed a secondary or tertiary education qualification in English in last two years, the applicant must also satisfy the following requirement of English language proficiency:
+                    <ul>
+                        <li>IELTS Test: 6.0 with no band lower than 5.5.</li>
+                        <li>TOEFL (internet-based) 70 (minimum of 20 in writing, 16 in speaking, 11 in listening and reading).</li>
+                        <li>Pearson Test of English (PTE) Academic: Overall score of 50 (minimum of 42 in listening, reading, speaking and writing)</li>
+                        <li>English for Academic Purposes (EAP) course completed at an accredited Australian ELICOS provider.</li>
+                    </ul>
+                </td>
+            </tr>
+        </table>
+        
+        <table class="details-table" style="margin-top: 10px;">
+            <tr>
+                <td>Due Date: Acceptance of Offer and Deposit Payment</td>
+                <td><strong>{{ offer.acceptance_due_date }}</strong></td>
+            </tr>
+        </table>
+        
+        <h3 style="font-size: 11pt; margin-top: 15px; margin-bottom: 5px;">New Student Orientation Details</h3>
+        <table class="details-table">
+            <tr>
+                <td>Orientation Date</td>
+                <td>Students will receive email 2 week prior to the class start date for orientation</td>
+            </tr>
+            <tr>
+                <td>Orientation Location</td>
+                <td>{{ campus.address }}</td>
+            </tr>
+        </table>
+        
+        <p style="margin-top: 10px; font-size: 9pt;">
+            When attending New Student Orientation, all new students are required to bring along their original passport, a copy of their CoE and academic documents.
+        </p>
+        
+        <p style="margin-top: 10px; font-size: 9pt; font-style: italic;">
+            *the total course fee is an estimate as course and other fees are subject to annual increases; and conditions apply to ongoing receipt of scholarships and bursaries. Refer to the Student Fees Policy for details.
+        </p>
+        
+        <h3 style="font-size: 11pt; margin-top: 15px; margin-bottom: 5px;">Fee Payment Details</h3>
+        <div style="border: 1px solid #000; padding: 10px; margin-top: 10px;">
+            <p><strong>Direct deposit payment</strong></p>
+            <p>Amount: $AU {{ "%.2f"|format(fees.total_deposit) }}</p>
+            <br>
+            <p style="font-size: 9pt;">Please include your Name and Offer ID in the bank transfer 'Description'.</p>
+            <br>
+            <table style="width: 100%; font-size: 9pt;">
+                <tr><td><strong>Account name:</strong></td><td>{{ rto.bank_account_name }}</td></tr>
+                <tr><td><strong>Bank:</strong></td><td>{{ rto.bank_name }}</td></tr>
+                <tr><td><strong>BSB:</strong></td><td>{{ rto.bank_bsb }}</td></tr>
+                <tr><td><strong>Account number:</strong></td><td>{{ rto.bank_account_number }}</td></tr>
+                <tr><td><strong>SWIFT code:</strong></td><td>{{ rto.bank_swift }}</td></tr>
+                <tr><td><strong>Branch address:</strong></td><td>{{ rto.bank_branch_address }}</td></tr>
+            </table>
+        </div>
+        
+        <p style="margin-top: 10px; font-size: 9pt; font-style: italic;">
+            Please also initial and date each page to confirm you have read, every page of the Terms and Conditions of your Offer of Admission.
+        </p>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 3 of 8
+        </div>
+    </div>
+    
+    <!-- PAGE 4-5: Terms and Conditions -->
+    <div class="page terms-section">
+        <div class="section-title">TERMS AND CONDITIONS - OFFER OF ADMISSION</div>
+        
+        <p style="margin-bottom: 10px;">
+            By accepting this Offer of Admission, you understand this is a binding agreement between you and {{ rto.legal_name }} (trading as the Churchill Institute of Higher Education); and that you agree to comply with the following Terms and Conditions while enrolled at the Churchill Institute of Higher Education (CIHE):
+        </p>
+        
+        <ol>
+            <li>You must be 18 years of age or older on the Issue Date of this Offer of Admission to sign the Declaration and Acceptance and enrol in the course.</li>
+            
+            <li>CIHE has issued this Offer of Admission as you have met the course minimum admissions criteria.</li>
+            
+            <li>CIHE will only issue you a CoE (international students only) after you have:
+                <ol type="i">
+                    <li>Met any conditions of this offer, outlined on page 1 (if applicable).</li>
+                    <li>Paid your deposit and accepted your Offer of Admission by the Due Date: Acceptance of Offer and Deposit Payment.</li>
+                </ol>
+            </li>
+            
+            <li>CIHE will not defer commencement of your course after the Course Start Date unless you can evidence compassionate and compelling circumstances. Approval to defer is entirely at the discretion of the Dean or delegate; and if deferment is approved, your deposit will be held in credit by CIHE (not refunded); and you must commence the course on the Start Date of the next intake semester, or your place in the course will be cancelled.</li>
+            
+            <li>The Australian Government requires that all international students studying in Australia on a student visa must be covered by Overseas Student Health Cover (OSHC) for the duration of their visa. If students are accompanied by family and children, they must have the compulsory family policy cover for OSHC.</li>
+            
+            <li>You are required to promptly notify CIHE within seven (7) days of any change to your personal and/or emergency contact details (residential address, mobile phone number, and/or mail address).</li>
+            
+            <li>CIHE may, at any time during your enrolment, formally engage a Third-party provider to provide a service or function related to delivery of the course.</li>
+            
+            <li>CIHE, as a registered higher education provider, is required to report your personal and course enrolment data to the Australian government (including the Tuition Protection Service [TPS]) for compliance and reporting purposes. Your data will be transferred securely, and your privacy managed to meet the requirements of the Privacy Act 1988 (Cth).</li>
+            
+            <li>CIHE will not provide you with a Release Letter (International students only) if you have been enrolled for less than six (6) months from the Course Start Date, unless:
+                <ol type="i">
+                    <li>You provide an Offer of Admission from the designated CRICOS registered higher education provider, and the course is at the same AQF level; and</li>
+                    <li>You can evidence compassionate or compelling circumstances that are directly related to your early release request to the satisfaction of the Dean or delegate; and / or</li>
+                    <li>The Dean or delegate determines your request meets other circumstances acceptable for an early release for the course, as outlined in the International Student Transfer Policy & Procedure.</li>
+                    <li>CIHE is unable to deliver your course (refer to 10 below).</li>
+                </ol>
+            </li>
+        </ol>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 4 of 8
+        </div>
+    </div>
+    
+    <div class="page terms-section">
+        <ol start="10">
+            <li>In the rare event that CIHE cannot deliver the course after your acceptance of this Offer of Admission and before the course commencement date (known as "Provider Default"), CIHE will offer you the option to either:
+                <ol type="i">
+                    <li>Enrol in another course at the same AQF level offered by CIHE for which you satisfy the admissions criteria.</li>
+                    <li>Arrange for you, with your written consent, to enrol in a comparable course at the same AQF level, offered by another CRICOS registered higher education provider.</li>
+                    <li>Issue you with a refund of any fees payable based on the Refund Schedule (Appendix B) in accordance with the Student Fees Policy.</li>
+                </ol>
+            </li>
+            
+            <li>In the rare event that CIHE decides to discontinue your course after the course commencement date, CIHE will:
+                <ol type="i">
+                    <li>Make every effort, wherever possible, to continue to offer the course for completion within the minimum course completion time and provide you with a "Teach-out Plan" that clearly outlines the revised arrangements to complete the course.</li>
+                    <li>The "Teach-out Plan" will include information about any changes to the course's professional accreditation status (if applicable) and any implications that may relate to the future recognition of the qualification and graduates' eligibility for employment.</li>
+                    <li>If CIHE does not "teach-out" the course, or should you wish to cancel your enrolment, CIHE will provide you with the option to transfer to another CRICOS registered higher education provider to complete a comparable course that is at the same AQF level and for which you satisfy the admission criteria.</li>
+                    <li>Any refund of fees you may be eligible to receive will be paid in accordance with the Refunds Schedule (Appendix B) based on the Student Fees Policy.</li>
+                </ol>
+            </li>
+            
+            <li>You understand and accept that CIHE retains the right to cancel this Offer of Admission or your enrolment in the course if:
+                <ol type="i">
+                    <li>You do not provide CIHE with the documentation or other information required to satisfy any conditions (if applicable) placed on this Offer of Admission (refer to p.1) by the Due Date.</li>
+                    <li>CIHE determines you provided fraudulent documentation and/or false or misleading information to support your Application for Admission and enrolment in the course.</li>
+                    <li>You commit serious or repeated incidents of misconduct (misbehavior and/or academic misconduct).</li>
+                    <li>You do not maintain enrolment in the course.</li>
+                    <li>You have not paid fees and charges owed to CIHE by the specified date each semester.</li>
+                    <li>You are issued a Notice of Exclusion due to unsatisfactory academic progress and are unsuccessful in any appeal you may make, per the Student Academic Progress and Course Completion Policy</li>
+                    <li>You repeatedly do not comply with Student Academic Progress and Course Completion Policy and other Policies as a condition of your enrolment.</li>
+                    <li>In the rare event that CIHE issued you this Offer of Admission in error.</li>
+                    <li>You have otherwise breached the conditions of your Student Visa (international students only).</li>
+                </ol>
+            </li>
+            
+            <li>The Tuition and ancillary fees charged by CIHE are subject to annual increases per the Student Fees Policy.</li>
+            
+            <li>Any refund of fees you may be eligible to be paid or that may be held as credit by CIHE for reasons not specified in sections 9-12 above are based on the Refunds Schedule (Appendix B), per the Student Fees Policy. A request for a refund must be submitted via the online Request for a Refund Form.</li>
+            
+            <li>If you are receiving financial assistance through a scholarship or bursary, the scholarship/bursary is valid from the Course Start Date to the Course End Date, with the conditions that:
+                <ol type="i">
+                    <li>Any annual fee increases apply, but the percentage of the scholarship/bursary will not change.</li>
+                    <li>You must achieve a minimum of a Pass (P) grade for every subject you enrol in each semester.</li>
+                    <li>If you do not pass all subjects in a semester of enrolment, the scholarship/bursary will be canceled, and you will pay the full tuition fee that applies for the remaining semesters of your course.</li>
+                </ol>
+            </li>
+            
+            <li>You may lodge a formal complaint (grievance) about any aspect of your enrolment at CIHE (including CIHE's third-party providers) by completing the online student grievance form, without fear of reprisal, based on the Student Grievance Policy.</li>
+            
+            <li>CIHE currently engages education agents as third-party providers to recruit international students on its behalf and may introduce additional third-party service providers in the future to deliver or administer a component of the course.</li>
+            
+            <li>As a registered higher education provider, CIHE contributes financially to the Tuition Protection Service (TPS) that provides assistance to international students in the unlikely event CIHE defaults as a provider ("provider default").</li>
+            
+            <li>This written agreement, and the right to make complaints and seek appeals of decisions and actions under various processes, does not affect the rights of the student to take action under the Australian Consumer Law if the Australian Consumer Law applies.</li>
+            
+            <li>You are advised to keep a copy of this signed Offer of Admission and Acceptance for your personal records.</li>
+            
+            <li>CIHE will retain this signed Offer of Admission agreement as well as receipts of payments made by you for at least two (2) years after the cessation of your enrolment at CIHE.</li>
+        </ol>
+        
+        <p style="margin-top: 15px; font-style: italic; font-size: 9pt;">
+            Please also initial and date each page to confirm you have read, every page of the Terms and Conditions of your Offer of Admission.
+        </p>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 5 of 8
+        </div>
+    </div>
+    
+    <!-- PAGE 6: Signature Page -->
+    <div class="page">
+        <div class="signature-section">
+            <p style="margin-bottom: 20px;">Yours Sincerely</p>
+            <p><strong>{{ dean.name }}</strong></p>
+            <p>{{ dean.title }}</p>
+        </div>
+        
+        <div style="margin-top: 40px; border: 2px solid #000; padding: 15px;">
+            <h3 style="font-size: 12pt; margin-bottom: 10px;">Declaration of Acceptance - Offer of Admission:</h3>
+            
+            <p style="margin-bottom: 15px;">
+                I, as the person named on page 1 in this Offer of Admission <strong>{{ student.given_name }} {{ student.family_name }}</strong> confirm that:
+            </p>
+            
+            <ul style="margin-left: 30px;">
+                <li>I have read, understood, and accept the Terms and Conditions of Offer of Admission.</li>
+                <li>My personal details included in this Offer of Admission are correct and complete.</li>
+                <li>I will comply with CIHE's policies and procedures at all times while I am enrolled at CIHE.</li>
+                <li>I had the option to obtain independent advice regarding the above Terms and Conditions before signing this Declaration and Acceptance of this Offer of Admission.</li>
+                <li>I, as the person named, signed this document myself, as confirmed by the Witness.</li>
+            </ul>
+            
+            <h4 style="margin-top: 20px; margin-bottom: 10px;">Acceptance Signatures</h4>
+            
+            <table style="width: 100%; margin-top: 15px;">
+                <tr>
+                    <td style="width: 50%; padding-right: 20px;">
+                        <p>Student Name:</p>
+                        <div class="signature-line" style="margin-top: 40px;"></div>
+                    </td>
+                    <td style="width: 50%;">
+                        <p>Student's Signature:</p>
+                        <div class="signature-line" style="margin-top: 40px;"></div>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding-top: 20px;">
+                        <p>Date:</p>
+                        <div class="signature-line" style="width: 150px; margin-top: 10px;"></div>
+                    </td>
+                </tr>
+            </table>
+            
+            <p style="margin-top: 15px; font-size: 9pt; font-style: italic;">
+                No other person, including an Education Agent, can sign the Declaration of Acceptance on the student's behalf.
+            </p>
+            
+            <p style="margin-top: 10px; font-size: 9pt; font-style: italic;">
+                Please also initial and date each page to confirm you have read, every page of the Terms and Conditions of your Offer of Admission.
+            </p>
+            
+            <h4 style="margin-top: 20px; margin-bottom: 10px;">Witness</h4>
+            
+            <table style="width: 100%; margin-top: 15px;">
+                <tr>
+                    <td style="width: 50%; padding-right: 20px;">
+                        <p>Witness Name:</p>
+                        <div class="signature-line" style="margin-top: 40px;"></div>
+                    </td>
+                    <td style="width: 50%;">
+                        <p>Witness Signature:</p>
+                        <div class="signature-line" style="margin-top: 40px;"></div>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding-top: 20px;">
+                        <p>Date:</p>
+                        <div class="signature-line" style="width: 150px; margin-top: 10px;"></div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 6 of 8
+        </div>
+    </div>
+    
+    <!-- PAGE 7: Glossary -->
+    <div class="page">
+        <div class="section-title">APPENDIX A: GLOSSARY OF TERMS (OFFER OF ADMISSION)</div>
+        
+        <table class="glossary-table">
+            <tr>
+                <td>AQF</td>
+                <td>Australian Qualifications Framework (AQF). The AQF classifies qualifications issued by registered education providers across 10 levels. A bachelor's degree is at AQF 7; and a Graduate Diploma is at AQF 8.</td>
+            </tr>
+            <tr>
+                <td>eCoE</td>
+                <td>Electronic Confirmation of Enrolment (eCoE). This is a one-page document issued by a CRICOS-registered provider on behalf of the Australian government that includes the course name, Start and End Date, and other information. A CoE is required to apply to the Department of Home Affairs for a student visa or to extend a current student visa.</td>
+            </tr>
+            <tr>
+                <td>Compassionate and Compelling Circumstances</td>
+                <td>Circumstances that include the death of or serious illness or injury to the student or their immediate family members (parents, grandparents, siblings); the student's involvement in or witnessing of a serious accident or violent crime; or a major political upheaval, pandemic, or natural disaster that occurred in Australia or the student's home country or region.</td>
+            </tr>
+            <tr>
+                <td>Extraordinary Circumstances</td>
+                <td>When a situation occurs that is beyond the control of the student and the consequences of which could not have been avoided, even if all reasonable measures had been taken.</td>
+            </tr>
+            <tr>
+                <td>Provider Default</td>
+                <td>When an education provider fails to provide a course to an enrolled student on an agreed start date; or when the education provider stops providing a course to a student at a location any time after the course has commenced, but before it has been completed.</td>
+            </tr>
+            <tr>
+                <td>Taught-out and Teach Out Plan</td>
+                <td>In the event CIHE discontinues a course, in most cases it will be "taught-out" (taught until all enrolled students complete the course within the minimum course completion time). Currently enrolled students will be issued a teach-out plan that outlines the requirements to complete their course within the minimal course completion time; and any changes to the course's professional accreditation or recognition, if applicable.</td>
+            </tr>
+            <tr>
+                <td>Third-party Provider</td>
+                <td>A third-party provider means another company/external organization with whom CIHE has an agreement to deliver or administer a component of the course. Education Agents are currently third-party providers. CIHE quality assures all third-party arrangements per applicable CIHE policies.</td>
+            </tr>
+        </table>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 7 of 8
+        </div>
+    </div>
+    
+    <!-- PAGE 8: Refund Schedule (Summary) -->
+    <div class="page">
+        <div class="section-title">APPENDIX B: REFUND SCHEDULE</div>
+        
+        <p style="margin-bottom: 10px; font-size: 9pt;">
+            The Refund Schedules are as specified in the Student Fees Policy
+        </p>
+        
+        <h3 style="font-size: 11pt; margin-top: 10px; margin-bottom: 5px;">DOMESTIC AND INTERNATIONAL STUDENTS' REFUND SCHEDULE</h3>
+        
+        <p style="margin-bottom: 10px; font-size: 9pt;">
+            The below Refund Schedule applies to both domestic and international students, unless a section specifies otherwise.
+        </p>
+        
+        <table class="details-table" style="font-size: 8pt;">
+            <tr style="background-color: #e0e0e0;">
+                <td><strong>Scenario</strong></td>
+                <td><strong>Time Period</strong></td>
+                <td><strong>Refund Payable</strong></td>
+            </tr>
+            <tr>
+                <td><strong>Visa Rejection</strong> (International Students Only)<br>The student's application for an Australian student visa is rejected by the Department of Home Affairs and they are unable to take up the offer of a place in the course.</td>
+                <td>Before the Course Start Date.</td>
+                <td>90% refund of the tuition fees paid for the first semester will be refunded.<br>100% refund of tuition fees paid for any future semesters.</td>
+            </tr>
+            <tr>
+                <td><strong>Provider Default</strong><br>Churchill Institute withdrew its offer of admission for reasons not related to the student, such as cancelling the student's course.</td>
+                <td>Before the Course Start Date.</td>
+                <td>100% refund of all tuition fees paid; or The student accepts the Institute's proposed arrangement of an alternative place in another the Churchill Institute course; or at another registered higher education CRICOS provider where fees will be transferred to the other provider, and any gaps payable will be paid by the student and advised in advance to the student.</td>
+            </tr>
+            <tr>
+                <td><strong>Student Default - Commencing Students</strong><br>Churchill Institute withdraws the student's offer of admission / cancels their enrolment in the course because the student provided fraudulent documentation and / or false and misleading information to support their application for admission.</td>
+                <td>Before the Course Start Date<br><br>After the Course Start Date</td>
+                <td>50% refund of tuition fees for the first semester. 100% refund of tuition fees paid for any future semesters.<br><br>0% refund of tuition fees for the first semester. 100% refund of tuition fees paid for any future semesters.</td>
+            </tr>
+            <tr>
+                <td><strong>Student Request for Withdrawal</strong><br>Student withdrawals (permanently) from the course.</td>
+                <td>Notification received by CIHE ≥ 21 days before the Course Start Date.</td>
+                <td>100% refund of tuition Fees paid for the first semester.<br>100% refund of tuition fees paid for any future semesters.</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>Notification received by CIHE < 21 days before the Course Start Date</td>
+                <td>90% refund of tuition Fees paid for the first semester.<br>100% of tuition fees paid for any future semesters.</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>Notification received by CIHE after the Course Start Date and by the Census Date.</td>
+                <td>80% refund of fees paid (domestic students)<br>50% refund of tuition fees for the first semester (international students who have not completed < 6 months of study from the Course Start Date). 80% refund all other international students.<br>100% refund of tuition fees paid for any future semesters (domestic and international students).</td>
+            </tr>
+        </table>
+        
+        <div class="footer-info">
+            {{ rto.legal_name }}. ABN: {{ rto.abn }},<br>
+            CRICOS Provider: {{ rto.cricos_code }}, TEQSA Provider: {{ rto.teqsa_number }},<br>
+            Sydney Campus: {{ campus_sydney.address }}<br>
+            Melbourne Campus: {{ campus_melbourne.address }}<br>
+            Phone: {{ rto.contact_phone }} | Email: {{ rto.contact_email }} | Website: {{ rto.website }}
+        </div>
+        
+        <div class="page-number">
+            Initial__________Date: ___________<br>
+            Page 8 of 8
+        </div>
+    </div>
+</body>
+</html>

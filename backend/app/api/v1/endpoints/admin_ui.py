@@ -92,3 +92,21 @@ async def courses_page(request: Request):
 async def campuses_page(request: Request):
     """Campuses management page."""
     return templates.TemplateResponse("admin/campuses.html", {"request": request})
+
+
+@router.get("/offer-letter/preview", response_class=HTMLResponse)
+async def offer_letter_preview(request: Request):
+    """Preview offer letter template with sample data."""
+    from app.services.offer_letter import OfferLetterService
+    
+    # Generate sample data
+    sample_data = OfferLetterService.generate_sample_data()
+    
+    # Add request to context
+    sample_data["request"] = request
+    
+    # Render template with sample data
+    return templates.TemplateResponse(
+        "offer_letter/offer_letter_international.html", 
+        sample_data
+    )

@@ -2,7 +2,8 @@
 Offer letter generation service using ReportLab for PDF creation.
 Generates professional offer letters for approved applications.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict
 
@@ -285,3 +286,128 @@ class OfferLetterService:
         if address.get('country'):
             parts.append(address['country'])
         return "<br/>".join(parts)
+    
+    @staticmethod
+    def generate_sample_data() -> Dict[str, Any]:
+        """Generate sample data for testing the offer letter template"""
+        
+        # Current date
+        today = date.today()
+        
+        # Sample student data
+        student = {
+            "title": "Mr.",
+            "given_name": "Rajesh",
+            "family_name": "Sharma",
+            "student_id": "CIHE25385",
+            "gender": "Male",
+            "date_of_birth": "1998-05-15",
+            "current_address": "123 Smith Street, Parramatta, NSW 2150, Australia",
+            "overseas_address": "Kathmandu-12, Bagmati Province, Nepal",
+            "phone": "+61 412 345 678",
+            "email": "rajesh.sharma@example.com",
+            "passport_number": "N1234567",
+        }
+        
+        # Sample emergency contact
+        emergency_contact = {
+            "name": "Sunita Sharma",
+            "relationship": "Mother",
+            "phone": "+977 98 12345678"
+        }
+        
+        # Sample RTO profile
+        rto = {
+            "legal_name": "Churchill Education Pty Ltd",
+            "abn": "12 345 678 901",
+            "cricos_code": "03101K",
+            "teqsa_number": "PRV14089",
+            "contact_phone": "02 8856 2997",
+            "contact_email": "admissions@churchill.nsw.edu.au",
+            "website": "www.churchill.nsw.edu.au",
+            "bank_account_name": "Churchill Education Pty Ltd",
+            "bank_name": "Commonwealth Bank of Australia",
+            "bank_bsb": "062-000",
+            "bank_account_number": "12345678",
+            "bank_swift": "CTBAAU2S",
+            "bank_branch_address": "48 Martin Place, Sydney NSW 2000, Australia"
+        }
+        
+        # Sample campuses
+        campus_sydney = {
+            "address": "Level 1 & 7, 16-18 Wentworth Street, Parramatta NSW 2150, Australia",
+            "phone": "02 8856 2997",
+            "email": "admissions@churchill.nsw.edu.au"
+        }
+        
+        campus_melbourne = {
+            "address": "Level 8, 85 Queen Street, Melbourne VIC 3000, Australia",
+            "phone": "02 8856 2997",
+            "email": "admissions@churchill.nsw.edu.au"
+        }
+        
+        # Sample course offering (selected campus)
+        campus = campus_sydney
+        
+        # Sample course details
+        course = {
+            "course_code": "BBA101",
+            "course_name": "Bachelor of Business Administration",
+            "aqf_level": "AQF Level 7 (Bachelor Degree)",
+            "cricos_code": "098765K",
+            "duration_weeks": 104,  # 2 years
+            "study_load": "Full-Time: 4 subjects per semester (40 credit points per semester)",
+            "wil_requirements": "Industry Project in final semester (20 hours minimum)",
+            "third_party_providers": "NA"
+        }
+        
+        # Sample offer details
+        offer = {
+            "offer_date": today.strftime("%d %B %Y"),
+            "course_start_date": (today + timedelta(days=60)).strftime("%d %B %Y"),
+            "course_end_date": (today + timedelta(days=60 + 728)).strftime("%d %B %Y"),  # ~2 years
+            "acceptance_due_date": (today + timedelta(days=21)).strftime("%d %B %Y"),
+            "conditions_of_admission": "Provide certified English language proficiency test results (IELTS 6.0 or equivalent)",
+            "advanced_standing": "NA",
+            "scholarship_percentage": 20
+        }
+        
+        # Sample fee calculations
+        total_tuition_fee = Decimal("30000.00")
+        scholarship_discount = total_tuition_fee * Decimal("0.20")
+        tuition_after_scholarship = total_tuition_fee - scholarship_discount
+        deposit_tuition_fee = tuition_after_scholarship / Decimal("3")
+        material_fee = Decimal("500.00")
+        enrolment_fee = Decimal("200.00")
+        total_deposit = deposit_tuition_fee + material_fee + enrolment_fee
+        remaining_tuition_fee = tuition_after_scholarship - deposit_tuition_fee
+        
+        fees = {
+            "total_tuition_fee": float(total_tuition_fee),
+            "scholarship_discount": float(scholarship_discount),
+            "tuition_after_scholarship": float(tuition_after_scholarship),
+            "deposit_tuition_fee": float(deposit_tuition_fee),
+            "material_fee": float(material_fee),
+            "enrolment_fee": float(enrolment_fee),
+            "total_deposit": float(total_deposit),
+            "remaining_tuition_fee": float(remaining_tuition_fee)
+        }
+        
+        # Sample dean/signatory
+        dean = {
+            "name": "Dr. Sarah Thompson",
+            "title": "Dean of Academic Affairs"
+        }
+        
+        return {
+            "student": student,
+            "emergency_contact": emergency_contact,
+            "rto": rto,
+            "campus": campus,
+            "campus_sydney": campus_sydney,
+            "campus_melbourne": campus_melbourne,
+            "course": course,
+            "offer": offer,
+            "fees": fees,
+            "dean": dean
+        }
